@@ -26,6 +26,7 @@ export type CalendarConnection = {
   calendarName: string | null;
   lastSyncedAt: string | null;
 };
+export type EditableGoogleCalendar = { id: string; name: string; primary: boolean; accessRole: "owner" | "writer" };
 
 type MembershipRow = { trip_id: string; role: TripRole };
 type TripRow = { id: string; name: string; starting_city_id: string | null };
@@ -161,6 +162,35 @@ export async function connectGoogleCalendar(tripId: string) {
   }
   if (!data?.authorizationUrl) throw new Error("Google did not return a connection address.");
   window.location.assign(data.authorizationUrl);
+}
+
+async function invokeCalendarSync<T>(tripId: string, action: string, extra: Record<string, unknown> = {}): Promise<T> {
+  const client = requireClient();
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!sessionData.session) throw new Error("Your session has expired. Please sign in again.");
+  const { data, error } = await client.functions.invoke("google-calendar-sync", {
+    body: { tripId, action, ...extra },
+    headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+  });
+  if (error) {
+    const response = "context" in error && error.context instanceof Response ? error.context : null;
+    if (response) {
+      const body = await response.clone().json().catch(() => null) as { error?: string } | null;
+      if (body?.error) throw new Error(body.error);
+    }
+    throw error;
+  }
+  return data as T;
+}
+
+export async function listGoogleCalendars(tripId: string) {
+  const result = await invokeCalendarSync<{ calendars: EditableGoogleCalendar[] }>(tripId, "list-calendars");
+  return result.calendars;
+}
+
+export async function selectGoogleCalendar(tripId: string, calendarId: string) {
+  await invokeCalendarSync(tripId, "select-calendar", { calendarId });
 }
 
 export async function updateDisplayName(displayName: string) {

@@ -82,6 +82,10 @@ footer { margin-top: 30px; text-align: center; }
 .calendar-connect button { border: 1px solid #b9bbb3; border-radius: 999px; background: transparent; padding: 9px 13px; color: #252621; font: inherit; font-size: .64rem; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
 .calendar-connect button:disabled { cursor: wait; opacity: .55; }
 .calendar-connect .calendar-message { color: #a33828; }
+.calendar-picker { margin: 14px 0 10px; }
+.calendar-picker .calendar-choice { display: grid; gap: 8px; }
+.calendar-picker label { color: #858780; font-size: .58rem; letter-spacing: .12em; text-transform: uppercase; }
+.calendar-picker select { width: 100%; border: 0; border-bottom: 1px solid #b9bbb3; border-radius: 0; background: #f7f6f1; padding: 10px 4px; color: #252621; font: inherit; font-size: .78rem; }
 .traveller-list { margin-top: 24px; border-top: 1px solid #d8d7d1; }
 .traveller-list p { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin: 0; border-bottom: 1px solid #e2e1dc; padding: 13px 0; font-size: .78rem; }
 .traveller-list small { display: block; margin-top: 3px; color: #858780; font-size: .58rem; letter-spacing: .09em; text-transform: uppercase; }

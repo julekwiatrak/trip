@@ -1,3 +1,5 @@
 [functions.google-calendar-auth]
 verify_jwt = false
 
+[functions.google-calendar-sync]
+verify_jwt = false

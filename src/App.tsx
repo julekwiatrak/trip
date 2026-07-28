@@ -9,6 +9,7 @@ import { useTripData } from "./useTripData";
 import { TravellersSheet } from "./TravellersSheet";
 import { InstallHelp } from "./InstallHelp";
 import { connectGoogleCalendar } from "./tripData";
+import { CalendarSettings } from "./CalendarSettings";
 import "./styles.css";
 
 const sectionLabels: Record<TimelineGroup, string> = {
@@ -272,6 +273,7 @@ function App() {
                 {data.calendarConnection ? (
                   <p><span>Google connected</span>{data.calendarConnection.googleAccountEmail}</p>
                 ) : <p>Connect the account that can edit the shared trip calendar.</p>}
+                {data.calendarConnection && <CalendarSettings data={data} onChanged={reload} />}
                 {calendarMessage && <p className="calendar-message">{calendarMessage}</p>}
                 <button disabled={connectingCalendar} onClick={() => {
                   setConnectingCalendar(true);
