@@ -8,6 +8,7 @@ import type { City, ItineraryEvent, TimelineGroup } from "./types";
 import { useTripData } from "./useTripData";
 import { TravellersSheet } from "./TravellersSheet";
 import { InstallHelp } from "./InstallHelp";
+import { connectGoogleCalendar } from "./tripData";
 import "./styles.css";
 
 const sectionLabels: Record<TimelineGroup, string> = {
@@ -19,6 +20,14 @@ const sectionLabels: Record<TimelineGroup, string> = {
 
 const formatTime = (value: string, timeZone: string) =>
   formatInTimeZone(value, timeZone, "EEE, d MMM, HH:mm");
+
+function initialCalendarMessage() {
+  const result = new URL(window.location.href).searchParams.get("calendar");
+  if (result === "connected") return "Google account connected.";
+  if (result === "denied") return "Google Calendar access was cancelled.";
+  if (result) return "The Google Calendar connection could not be completed.";
+  return undefined;
+}
 
 function eventHasCity(event: ItineraryEvent, cityId: string) {
   return event.type === "travel"
@@ -89,6 +98,8 @@ function App() {
   const [editingEvent, setEditingEvent] = useState<ItineraryEvent>();
   const [travellersOpen, setTravellersOpen] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState<string[]>([]);
+  const [calendarMessage, setCalendarMessage] = useState<string | undefined>(initialCalendarMessage);
+  const [connectingCalendar, setConnectingCalendar] = useState(false);
   const [open, setOpen] = useState<Record<TimelineGroup, boolean>>({
     earlier: false,
     now: true,
@@ -110,6 +121,15 @@ function App() {
       setSignedInAs(data.user?.email);
     });
   }, []);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const result = url.searchParams.get("calendar");
+    if (!result) return;
+    url.searchParams.delete("calendar");
+    window.history.replaceState({}, "", url);
+    if (result === "connected") void reload();
+  }, [reload]);
 
   const cities = useMemo(() => data?.cities ?? [], [data?.cities]);
   const itinerary = useMemo(() => data?.events ?? [], [data?.events]);
@@ -246,6 +266,23 @@ function App() {
               const matches = itinerary.filter((event) => eventHasCity(event, city.id));
               return <button key={city.id} onClick={() => goToEvents(matches)}>{city.name}</button>;
             })}
+            {data.role === "admin" && (
+              <div className="calendar-connect">
+                <h3>Calendar</h3>
+                {data.calendarConnection ? (
+                  <p><span>Google connected</span>{data.calendarConnection.googleAccountEmail}</p>
+                ) : <p>Connect the account that can edit the shared trip calendar.</p>}
+                {calendarMessage && <p className="calendar-message">{calendarMessage}</p>}
+                <button disabled={connectingCalendar} onClick={() => {
+                  setConnectingCalendar(true);
+                  setCalendarMessage(undefined);
+                  void connectGoogleCalendar(data.tripId).catch((caught: unknown) => {
+                    setCalendarMessage(caught instanceof Error ? caught.message : "Could not connect Google Calendar.");
+                    setConnectingCalendar(false);
+                  });
+                }}>{connectingCalendar ? "Opening Google…" : data.calendarConnection ? "Reconnect Google" : "Connect Google Calendar"}</button>
+              </div>
+            )}
             <InstallHelp />
             <div className="sheet-account">
               {signedInAs && <p><span>Signed in as</span>{signedInAs}</p>}

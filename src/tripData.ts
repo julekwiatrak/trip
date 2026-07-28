@@ -15,10 +15,17 @@ export type TripData = {
   tickets: Ticket[];
   cities: City[];
   events: ItineraryEvent[];
+  calendarConnection: CalendarConnection | null;
 };
 
 export type TripMember = { userId: string; displayName: string; role: TripRole };
 export type Ticket = { id: string; eventId: string; fileName: string; storagePath: string; audience: "everyone" | "individual"; assignedTo: string | null };
+export type CalendarConnection = {
+  googleAccountEmail: string;
+  calendarId: string | null;
+  calendarName: string | null;
+  lastSyncedAt: string | null;
+};
 
 type MembershipRow = { trip_id: string; role: TripRole };
 type TripRow = { id: string; name: string; starting_city_id: string | null };
@@ -84,13 +91,16 @@ export async function loadTripData(): Promise<TripData> {
   const membership = membershipData as MembershipRow | null;
   if (!membership) throw new Error("Your account is not a member of a trip yet.");
 
-  const [tripResult, profileResult, membersResult, citiesResult, eventsResult, ticketsResult] = await Promise.all([
+  const [tripResult, profileResult, membersResult, citiesResult, eventsResult, ticketsResult, calendarResult] = await Promise.all([
     client.from("trips").select("id, name, starting_city_id").eq("id", membership.trip_id).single(),
     client.from("profiles").select("display_name").eq("id", userData.user.id).single(),
     client.from("trip_members").select("user_id, role, profiles(display_name)").eq("trip_id", membership.trip_id),
     client.from("cities").select("id, name, country_code, time_zone").eq("trip_id", membership.trip_id).order("name"),
     client.from("events").select("id, type, title, starts_at, ends_at, city_id, origin_city_id, destination_city_id, transport, details").eq("trip_id", membership.trip_id).order("starts_at"),
     client.from("tickets").select("id, event_id, file_name, storage_path, audience, assigned_to, events!inner(trip_id)").eq("events.trip_id", membership.trip_id),
+    membership.role === "admin"
+      ? client.from("calendar_connections").select("google_account_email, calendar_id, calendar_name, last_synced_at").eq("trip_id", membership.trip_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   if (tripResult.error) throw tripResult.error;
@@ -99,6 +109,7 @@ export async function loadTripData(): Promise<TripData> {
   if (citiesResult.error) throw citiesResult.error;
   if (eventsResult.error) throw eventsResult.error;
   if (ticketsResult.error) throw ticketsResult.error;
+  if (calendarResult.error) throw calendarResult.error;
 
   const trip = tripResult.data as TripRow;
   const cityRows = citiesResult.data as CityRow[];
@@ -120,7 +131,25 @@ export async function loadTripData(): Promise<TripData> {
       timeZone: city.time_zone,
     })),
     events: eventRows.map(mapEvent),
+    calendarConnection: calendarResult.data
+      ? {
+          googleAccountEmail: calendarResult.data.google_account_email,
+          calendarId: calendarResult.data.calendar_id,
+          calendarName: calendarResult.data.calendar_name,
+          lastSyncedAt: calendarResult.data.last_synced_at,
+        }
+      : null,
   };
+}
+
+export async function connectGoogleCalendar(tripId: string) {
+  const client = requireClient();
+  const { data, error } = await client.functions.invoke("google-calendar-auth", {
+    body: { tripId },
+  });
+  if (error) throw error;
+  if (!data?.authorizationUrl) throw new Error("Google did not return a connection address.");
+  window.location.assign(data.authorizationUrl);
 }
 
 export async function updateDisplayName(displayName: string) {
