@@ -47,11 +47,18 @@ export function AddEventSheet({ tripId, cities, event: existing, tickets = [], m
   const suggestedCity = calendarImport ? cities.find((city) => `${calendarImport.title} ${calendarImport.location ?? ""}`.toLocaleLowerCase().includes(city.name.toLocaleLowerCase())) : undefined;
   const [title, setTitle] = useState(existing?.title ?? calendarImport?.title ?? "");
   const [cityId, setCityId] = useState(existingCity?.id ?? suggestedCity?.id ?? cities[0]?.id ?? "");
-  const [originCityId, setOriginCityId] = useState(existingOrigin?.id ?? cities[0]?.id ?? "");
-  const [destinationCityId, setDestinationCityId] = useState(existingDestination?.id ?? cities[1]?.id ?? cities[0]?.id ?? "");
+  const importText = `${calendarImport?.title ?? ""} ${calendarImport?.location ?? ""}`.toLocaleLowerCase();
+  const mentionedCities = calendarImport
+    ? cities.filter((city) => importText.includes(city.name.toLocaleLowerCase()))
+      .sort((left, right) => importText.indexOf(left.name.toLocaleLowerCase()) - importText.indexOf(right.name.toLocaleLowerCase()))
+    : [];
+  const suggestedOrigin = mentionedCities[0];
+  const suggestedDestination = mentionedCities[1];
+  const [originCityId, setOriginCityId] = useState(existingOrigin?.id ?? suggestedOrigin?.id ?? cities[0]?.id ?? "");
+  const [destinationCityId, setDestinationCityId] = useState(existingDestination?.id ?? suggestedDestination?.id ?? cities[1]?.id ?? cities[0]?.id ?? "");
   const [transport, setTransport] = useState<Exclude<TransportMode, "other">>(existing?.type === "travel" && existing.transport !== "other" ? existing.transport : "train");
-  const [startsAt, setStartsAt] = useState(calendarImport?.allDay ? "" : calendarImport?.rawEvent.start?.dateTime?.slice(0, 16) ?? localValue(existing?.startsAt, existingOrigin?.timeZone ?? existingCity?.timeZone ?? "Europe/London"));
-  const [endsAt, setEndsAt] = useState(calendarImport?.allDay ? "" : calendarImport?.rawEvent.end?.dateTime?.slice(0, 16) ?? localValue(existing?.endsAt, existingDestination?.timeZone ?? existingCity?.timeZone ?? "Europe/London"));
+  const [startsAt, setStartsAt] = useState(calendarImport?.allDay ? "" : localValue(calendarImport?.startsAt ?? existing?.startsAt, suggestedOrigin?.timeZone ?? suggestedCity?.timeZone ?? existingOrigin?.timeZone ?? existingCity?.timeZone ?? "Europe/London"));
+  const [endsAt, setEndsAt] = useState(calendarImport?.allDay ? "" : localValue(calendarImport?.endsAt ?? existing?.endsAt, suggestedDestination?.timeZone ?? suggestedCity?.timeZone ?? existingDestination?.timeZone ?? existingCity?.timeZone ?? "Europe/London"));
   const [details, setDetails] = useState(existing?.details ?? calendarImport?.description ?? "");
   const [cityName, setCityName] = useState("");
   const [countryCode, setCountryCode] = useState<SupportedCountryCode>("GB");
@@ -166,12 +173,12 @@ export function AddEventSheet({ tripId, cities, event: existing, tickets = [], m
               <>
                 <label>Transport<select value={transport} onChange={(event) => setTransport(event.target.value as Exclude<TransportMode, "other">)}>{transportModes.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
                 <div className="form-pair">
-                  <label>Departure city<select required value={originCityId} onChange={(event) => setOriginCityId(event.target.value)}><option value="" disabled>Choose</option>{cities.map((city) => <option value={city.id} key={city.id}>{city.name}</option>)}</select></label>
-                  <label>Arrival city<select required value={destinationCityId} onChange={(event) => setDestinationCityId(event.target.value)}><option value="" disabled>Choose</option>{cities.map((city) => <option value={city.id} key={city.id}>{city.name}</option>)}</select></label>
+                  <label>Departure city<select required value={originCityId} onChange={(event) => { const id = event.target.value; setOriginCityId(id); const city = cities.find((item) => item.id === id); if (calendarImport?.startsAt && city) setStartsAt(localValue(calendarImport.startsAt, city.timeZone)); }}><option value="" disabled>Choose</option>{cities.map((city) => <option value={city.id} key={city.id}>{city.name}</option>)}</select></label>
+                  <label>Arrival city<select required value={destinationCityId} onChange={(event) => { const id = event.target.value; setDestinationCityId(id); const city = cities.find((item) => item.id === id); if (calendarImport?.endsAt && city) setEndsAt(localValue(calendarImport.endsAt, city.timeZone)); }}><option value="" disabled>Choose</option>{cities.map((city) => <option value={city.id} key={city.id}>{city.name}</option>)}</select></label>
                 </div>
               </>
             ) : (
-              <label>City<select required value={cityId} onChange={(event) => setCityId(event.target.value)}><option value="" disabled>Choose a city</option>{cities.map((city) => <option value={city.id} key={city.id}>{city.name}</option>)}</select></label>
+              <label>City<select required value={cityId} onChange={(event) => { const id = event.target.value; setCityId(id); const city = cities.find((item) => item.id === id); if (calendarImport?.startsAt && city) setStartsAt(localValue(calendarImport.startsAt, city.timeZone)); if (calendarImport?.endsAt && city) setEndsAt(localValue(calendarImport.endsAt, city.timeZone)); }}><option value="" disabled>Choose a city</option>{cities.map((city) => <option value={city.id} key={city.id}>{city.name}</option>)}</select></label>
             )}
             <button className="text-action" type="button" onClick={() => setMode("city")}>+ Add another city</button>
             <div className="form-pair">
