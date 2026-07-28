@@ -144,10 +144,21 @@ export async function loadTripData(): Promise<TripData> {
 
 export async function connectGoogleCalendar(tripId: string) {
   const client = requireClient();
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!sessionData.session) throw new Error("Your session has expired. Please sign in again.");
   const { data, error } = await client.functions.invoke("google-calendar-auth", {
     body: { tripId },
+    headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
   });
-  if (error) throw error;
+  if (error) {
+    const response = "context" in error && error.context instanceof Response ? error.context : null;
+    if (response) {
+      const body = await response.clone().json().catch(() => null) as { error?: string } | null;
+      if (body?.error) throw new Error(body.error);
+    }
+    throw error;
+  }
   if (!data?.authorizationUrl) throw new Error("Google did not return a connection address.");
   window.location.assign(data.authorizationUrl);
 }

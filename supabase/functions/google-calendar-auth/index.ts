@@ -2,13 +2,29 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 const requiredEnv = (name: string) => {
   const value = Deno.env.get(name);
   if (!value) throw new Error(`${name} is not configured`);
   return value;
+};
+
+const supabaseKey = (legacyName: string, currentName: string) => {
+  const legacy = Deno.env.get(legacyName);
+  if (legacy) return legacy;
+  const current = Deno.env.get(currentName);
+  if (!current) throw new Error(`${legacyName} or ${currentName} is not configured`);
+  try {
+    const keys = JSON.parse(current) as Record<string, string>;
+    const key = Object.values(keys).find((value) => typeof value === "string" && value.length > 0);
+    if (key) return key;
+  } catch {
+    // Some environments may expose a single key rather than a JSON dictionary.
+    if (current.length > 0) return current;
+  }
+  throw new Error(`${currentName} does not contain a usable key`);
 };
 
 const bytesToBase64 = (bytes: Uint8Array) => {
@@ -45,7 +61,7 @@ Deno.serve(async (request) => {
 
   try {
     const supabaseUrl = requiredEnv("SUPABASE_URL");
-    const service = createClient(supabaseUrl, requiredEnv("SUPABASE_SERVICE_ROLE_KEY"));
+    const service = createClient(supabaseUrl, supabaseKey("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SECRET_KEYS"));
     const url = new URL(request.url);
 
     if (url.pathname.endsWith("/callback")) {
@@ -115,7 +131,7 @@ Deno.serve(async (request) => {
     const authorization = request.headers.get("Authorization");
     if (!authorization) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
-    const userClient = createClient(supabaseUrl, requiredEnv("SUPABASE_ANON_KEY"), {
+    const userClient = createClient(supabaseUrl, supabaseKey("SUPABASE_ANON_KEY", "SUPABASE_PUBLISHABLE_KEYS"), {
       global: { headers: { Authorization: authorization } },
     });
     const { data: userData, error: userError } = await userClient.auth.getUser();
@@ -167,4 +183,3 @@ Deno.serve(async (request) => {
     });
   }
 });
-
