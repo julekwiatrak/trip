@@ -68,16 +68,16 @@ Deno.serve(async (request) => {
     const { data: userData, error: userError } = await service.auth.getUser(accessToken);
     if (userError || !userData.user) return Response.json({ error: "Your session could not be verified." }, { status: 401, headers: corsHeaders });
 
-    const { tripId, action, calendarId } = await request.json();
+    const { tripId, action, calendarId, eventId } = await request.json();
     const { data: membership, error: membershipError } = await service
       .from("trip_members")
       .select("role")
       .eq("trip_id", tripId)
       .eq("user_id", userData.user.id)
-      .eq("role", "admin")
       .maybeSingle();
     if (membershipError) throw membershipError;
-    if (!membership) return Response.json({ error: "Only a trip admin can configure calendar sync." }, { status: 403, headers: corsHeaders });
+    if (!membership) return Response.json({ error: "You are not a member of this trip." }, { status: 403, headers: corsHeaders });
+    if (action !== "push-event" && membership.role !== "admin") return Response.json({ error: "Only a trip admin can configure or run calendar sync." }, { status: 403, headers: corsHeaders });
 
     const { data: credentialData, error: credentialError } = await service
       .from("google_calendar_credentials")
@@ -110,6 +110,73 @@ Deno.serve(async (request) => {
         updated_at: new Date().toISOString(),
       }).eq("trip_id", tripId);
       if (updateError) throw updateError;
+    }
+
+    if (action === "push-event") {
+      if (!eventId) throw new Error("No event was supplied for Google Calendar.");
+      const { data: itineraryEvent, error: eventError } = await service.from("events")
+        .select("id, type, title, starts_at, ends_at, city_id, origin_city_id, destination_city_id, transport, details, external_calendar_id, external_event_id")
+        .eq("id", eventId).eq("trip_id", tripId).single();
+      if (eventError) throw eventError;
+      const cityIds = [itineraryEvent.city_id, itineraryEvent.origin_city_id, itineraryEvent.destination_city_id].filter(Boolean);
+      const { data: cityRows, error: cityError } = await service.from("cities").select("id, name, time_zone").in("id", cityIds);
+      if (cityError) throw cityError;
+      const cityById = new Map((cityRows ?? []).map((city) => [city.id, city]));
+      const startCity = cityById.get(itineraryEvent.type === "travel" ? itineraryEvent.origin_city_id : itineraryEvent.city_id);
+      const endCity = cityById.get(itineraryEvent.type === "travel" ? itineraryEvent.destination_city_id : itineraryEvent.city_id);
+      if (!startCity || !endCity) throw new Error("The event cities could not be resolved.");
+
+      const { data: connection, error: connectionError } = await service.from("calendar_connections")
+        .select("calendar_id").eq("trip_id", tripId).single();
+      if (connectionError || !connection?.calendar_id) throw new Error("The event was saved in Trip, but no Google trip calendar is selected.");
+      if (itineraryEvent.external_event_id) {
+        const { data: importRow } = await service.from("calendar_imports").select("google_event_type")
+          .eq("trip_id", tripId).eq("google_event_id", itineraryEvent.external_event_id).maybeSingle();
+        if (importRow?.google_event_type === "fromGmail") {
+          return Response.json({ pushed: false, googleManaged: true }, { headers: corsHeaders });
+        }
+      }
+
+      const googleBody = {
+        summary: itineraryEvent.title,
+        description: itineraryEvent.details ?? "",
+        location: startCity.name,
+        start: { dateTime: itineraryEvent.starts_at, timeZone: startCity.time_zone },
+        end: { dateTime: itineraryEvent.ends_at, timeZone: endCity.time_zone },
+        extendedProperties: { private: {
+          tripAppEventId: itineraryEvent.id,
+          tripId,
+          tripEventType: itineraryEvent.type,
+          ...(itineraryEvent.transport ? { tripTransport: itineraryEvent.transport } : {}),
+          tripOriginCityId: itineraryEvent.origin_city_id ?? "",
+          tripDestinationCityId: itineraryEvent.destination_city_id ?? "",
+          tripCityId: itineraryEvent.city_id ?? "",
+        } },
+      };
+      const targetCalendarId = itineraryEvent.external_calendar_id ?? connection.calendar_id;
+      const googleUrl = itineraryEvent.external_event_id
+        ? `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(targetCalendarId)}/events/${encodeURIComponent(itineraryEvent.external_event_id)}`
+        : `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(targetCalendarId)}/events`;
+      const googleResponse = await fetch(googleUrl, {
+        method: itineraryEvent.external_event_id ? "PATCH" : "POST",
+        headers: { Authorization: `Bearer ${googleAccessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify(googleBody),
+      });
+      if (!googleResponse.ok) {
+        const googleError = await googleResponse.json().catch(() => null);
+        console.error("Google event push failed", googleResponse.status, googleError);
+        throw new Error("The event was saved in Trip, but Google Calendar could not be updated.");
+      }
+      const googleEvent = await googleResponse.json();
+      const { error: linkError } = await service.from("events").update({
+        external_source: "google-calendar",
+        external_calendar_id: targetCalendarId,
+        external_event_id: googleEvent.id,
+        external_updated_at: googleEvent.updated ?? null,
+        external_etag: googleEvent.etag ?? null,
+      }).eq("id", eventId);
+      if (linkError) throw linkError;
+      return Response.json({ pushed: true, googleEventId: googleEvent.id }, { headers: corsHeaders });
     }
 
     const listResponse = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250", {

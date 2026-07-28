@@ -107,7 +107,7 @@ export function AddEventSheet({ tripId, cities, event: existing, tickets = [], m
       }
 
       if (calendarImport) await importCalendarEvent(tripId, calendarId, calendarImport, input);
-      else if (existing) await updateEvent(existing.id, input);
+      else if (existing) await updateEvent(existing.id, tripId, input);
       else await createEvent(tripId, input);
       await onChanged();
       if (calendarImport && onProcessed) await onProcessed();

@@ -288,8 +288,13 @@ export type NewTravelEvent = {
 
 export type NewEvent = NewLocatedEvent | NewTravelEvent;
 
+async function pushEventToGoogle(tripId: string, eventId: string) {
+  await invokeCalendarSync(tripId, "push-event", { eventId });
+}
+
 export async function createEvent(tripId: string, event: NewEvent): Promise<void> {
   const client = requireClient();
+  const eventId = crypto.randomUUID();
   const shape = event.type === "travel"
     ? {
         city_id: null,
@@ -304,6 +309,7 @@ export async function createEvent(tripId: string, event: NewEvent): Promise<void
         transport: null,
       };
   const { error } = await client.from("events").insert({
+    id: eventId,
     trip_id: tripId,
     type: event.type,
     title: event.title,
@@ -313,9 +319,14 @@ export async function createEvent(tripId: string, event: NewEvent): Promise<void
     ...shape,
   });
   if (error) throw error;
+  try {
+    await pushEventToGoogle(tripId, eventId);
+  } catch (caught) {
+    throw new Error(caught instanceof Error ? `Event saved in Trip. ${caught.message}` : "Event saved in Trip, but Google Calendar could not be updated.", { cause: caught });
+  }
 }
 
-export async function updateEvent(eventId: string, event: NewEvent): Promise<void> {
+export async function updateEvent(eventId: string, tripId: string, event: NewEvent): Promise<void> {
   const client = requireClient();
   const shape = event.type === "travel"
     ? {
@@ -339,6 +350,11 @@ export async function updateEvent(eventId: string, event: NewEvent): Promise<voi
     ...shape,
   }).eq("id", eventId);
   if (error) throw error;
+  try {
+    await pushEventToGoogle(tripId, eventId);
+  } catch (caught) {
+    throw new Error(caught instanceof Error ? `Changes saved in Trip. ${caught.message}` : "Changes saved in Trip, but Google Calendar could not be updated.", { cause: caught });
+  }
 }
 
 export async function deleteEvent(eventId: string, tickets: Ticket[]): Promise<void> {
