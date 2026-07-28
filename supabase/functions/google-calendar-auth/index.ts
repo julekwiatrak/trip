@@ -11,22 +11,6 @@ const requiredEnv = (name: string) => {
   return value;
 };
 
-const supabaseKey = (legacyName: string, currentName: string) => {
-  const legacy = Deno.env.get(legacyName);
-  if (legacy) return legacy;
-  const current = Deno.env.get(currentName);
-  if (!current) throw new Error(`${legacyName} or ${currentName} is not configured`);
-  try {
-    const keys = JSON.parse(current) as Record<string, string>;
-    const key = Object.values(keys).find((value) => typeof value === "string" && value.length > 0);
-    if (key) return key;
-  } catch {
-    // Some environments may expose a single key rather than a JSON dictionary.
-    if (current.length > 0) return current;
-  }
-  throw new Error(`${currentName} does not contain a usable key`);
-};
-
 const bytesToBase64 = (bytes: Uint8Array) => {
   let binary = "";
   bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
@@ -61,7 +45,9 @@ Deno.serve(async (request) => {
 
   try {
     const supabaseUrl = requiredEnv("SUPABASE_URL");
-    const service = createClient(supabaseUrl, supabaseKey("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SECRET_KEYS"));
+    const service = createClient(supabaseUrl, requiredEnv("APP_SUPABASE_SECRET_KEY"), {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
     const url = new URL(request.url);
 
     if (url.pathname.endsWith("/callback")) {
@@ -127,25 +113,35 @@ Deno.serve(async (request) => {
       return appRedirect("connected");
     }
 
-    if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: corsHeaders });
+    if (request.method !== "POST") return Response.json({ error: "Method not allowed" }, { status: 405, headers: corsHeaders });
     const authorization = request.headers.get("Authorization");
-    if (!authorization) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+    if (!authorization) return Response.json({ error: "Your Supabase session was not sent. Please sign out and sign in again." }, { status: 401, headers: corsHeaders });
 
-    const userClient = createClient(supabaseUrl, supabaseKey("SUPABASE_ANON_KEY", "SUPABASE_PUBLISHABLE_KEYS"), {
-      global: { headers: { Authorization: authorization } },
-    });
-    const { data: userData, error: userError } = await userClient.auth.getUser();
-    if (userError || !userData.user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+    const accessToken = authorization.replace(/^Bearer\s+/i, "");
+    const { data: userData, error: userError } = await service.auth.getUser(accessToken);
+    if (userError || !userData.user) {
+      console.warn("Supabase session validation failed", userError?.message);
+      return Response.json({ error: "Your Supabase session could not be verified. Please sign out and sign in again." }, { status: 401, headers: corsHeaders });
+    }
 
     const { tripId } = await request.json();
-    const { data: membership } = await service
+    const { data: membership, error: membershipError } = await service
       .from("trip_members")
       .select("role")
       .eq("trip_id", tripId)
       .eq("user_id", userData.user.id)
       .eq("role", "admin")
       .maybeSingle();
-    if (!membership) return new Response("Only a trip admin can connect a calendar", { status: 403, headers: corsHeaders });
+    if (membershipError) {
+      console.error("Admin membership lookup failed", membershipError);
+      return Response.json({ error: `Could not check your trip admin role: ${membershipError.message}` }, { status: 500, headers: corsHeaders });
+    }
+    console.log("Calendar connection admin check", {
+      userId: userData.user.id,
+      tripId,
+      isAdmin: Boolean(membership),
+    });
+    if (!membership) return Response.json({ error: "Only a trip admin can connect a calendar." }, { status: 403, headers: corsHeaders });
 
     const state = bytesToBase64(crypto.getRandomValues(new Uint8Array(32)))
       .replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
