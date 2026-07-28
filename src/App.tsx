@@ -7,6 +7,7 @@ import { supabase } from "./supabase";
 import type { City, ItineraryEvent, TimelineGroup } from "./types";
 import { useTripData } from "./useTripData";
 import { TravellersSheet } from "./TravellersSheet";
+import { InstallHelp } from "./InstallHelp";
 import "./styles.css";
 
 const sectionLabels: Record<TimelineGroup, string> = {
@@ -92,7 +93,7 @@ function App() {
     earlier: false,
     now: true,
     next: true,
-    later: true,
+    later: false,
   });
   const [visible, setVisible] = useState<Record<"earlier" | "later", number>>({
     earlier: 1,
@@ -245,6 +246,7 @@ function App() {
               const matches = itinerary.filter((event) => eventHasCity(event, city.id));
               return <button key={city.id} onClick={() => goToEvents(matches)}>{city.name}</button>;
             })}
+            <InstallHelp />
             <div className="sheet-account">
               {signedInAs && <p><span>Signed in as</span>{signedInAs}</p>}
               <button onClick={() => { setMenuOpen(false); setTravellersOpen(true); }}>Travellers</button>

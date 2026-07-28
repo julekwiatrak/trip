@@ -1,6 +1,7 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { hasSupabaseConfig, supabase } from "./supabase";
+import { InstallHelp } from "./InstallHelp";
 
 function SetupRequired() {
   return (
@@ -41,11 +42,7 @@ function Login() {
         <label>Password<input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
         {error && <p className="auth-error" role="alert">{error}</p>}
         <button type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button>
-        <details className="install-help">
-          <summary>Install as an app</summary>
-          <p><strong>iPhone</strong> Open this page in Safari, tap Share, then Add to Home Screen and enable Open as Web App.</p>
-          <p><strong>Android</strong> Open this page in Chrome, open the browser menu, then choose Install app or Add to Home screen.</p>
-        </details>
+        <InstallHelp />
       </form>
     </main>
   );
