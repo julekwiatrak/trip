@@ -6,6 +6,7 @@ import { cityForEvent, currentCity, groupEvents, isInIntercityTransit } from "./
 import { supabase } from "./supabase";
 import type { City, ItineraryEvent, TimelineGroup } from "./types";
 import { useTripData } from "./useTripData";
+import { TravellersSheet } from "./TravellersSheet";
 import "./styles.css";
 
 const sectionLabels: Record<TimelineGroup, string> = {
@@ -18,7 +19,32 @@ const sectionLabels: Record<TimelineGroup, string> = {
 const formatTime = (value: string, timeZone: string) =>
   formatInTimeZone(value, timeZone, "EEE, d MMM, HH:mm");
 
-function EventCard({ event, cities, onEdit }: { event: ItineraryEvent; cities: City[]; onEdit: () => void }) {
+function eventHasCity(event: ItineraryEvent, cityId: string) {
+  return event.type === "travel"
+    ? event.originCityId === cityId || event.destinationCityId === cityId
+    : event.cityId === cityId;
+}
+
+function eventDateKeys(event: ItineraryEvent, cities: City[]) {
+  const startCity = event.type === "travel"
+    ? cities.find((city) => city.id === event.originCityId)
+    : cities.find((city) => city.id === event.cityId);
+  const endCity = event.type === "travel"
+    ? cities.find((city) => city.id === event.destinationCityId)
+    : startCity;
+  const startKey = formatInTimeZone(event.startsAt, startCity?.timeZone ?? "UTC", "yyyy-MM-dd");
+  const endKey = formatInTimeZone(event.endsAt, endCity?.timeZone ?? "UTC", "yyyy-MM-dd");
+  const keys: string[] = [];
+  const cursor = new Date(`${startKey}T12:00:00Z`);
+  const end = new Date(`${endKey}T12:00:00Z`);
+  while (cursor <= end) {
+    keys.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return keys;
+}
+
+function EventCard({ event, cities, onEdit, highlighted }: { event: ItineraryEvent; cities: City[]; onEdit: () => void; highlighted: boolean }) {
   const city = cityForEvent(event, cities);
   const origin = event.type === "travel" ? cities.find((item) => item.id === event.originCityId) : undefined;
   const destination = event.type === "travel" ? cities.find((item) => item.id === event.destinationCityId) : undefined;
@@ -30,7 +56,7 @@ function EventCard({ event, cities, onEdit }: { event: ItineraryEvent; cities: C
     : city?.name;
 
   return (
-    <article className="event interactive-event" id={`event-${event.id}`} role="button" tabIndex={0} onClick={onEdit} onKeyDown={(keyEvent) => { if (keyEvent.key === "Enter" || keyEvent.key === " ") onEdit(); }}>
+    <article className={`event interactive-event${highlighted ? " navigation-target" : ""}`} id={`event-${event.id}`} role="button" tabIndex={0} onClick={onEdit} onKeyDown={(keyEvent) => { if (keyEvent.key === "Enter" || keyEvent.key === " ") onEdit(); }}>
       <div className="location-rail">
         <span>{location}</span>
         <i aria-hidden="true" />
@@ -60,6 +86,8 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<ItineraryEvent>();
+  const [travellersOpen, setTravellersOpen] = useState(false);
+  const [highlightedIds, setHighlightedIds] = useState<string[]>([]);
   const [open, setOpen] = useState<Record<TimelineGroup, boolean>>({
     earlier: false,
     now: true,
@@ -87,14 +115,39 @@ function App() {
   const groups = useMemo(() => groupEvents(itinerary, now), [itinerary, now]);
   const place = currentCity(itinerary, cities, now, data?.startingCityId);
   const inTransit = isInIntercityTransit(itinerary, now);
-  const dates = useMemo(
-    () => [...new Set(itinerary.map((event) => event.startsAt.slice(0, 10)))],
-    [itinerary],
-  );
+  const dates = useMemo(() => [...new Set(itinerary.flatMap((event) => eventDateKeys(event, cities)))].sort(), [itinerary, cities]);
+  const citiesWithEvents = useMemo(() => cities.filter((city) => itinerary.some((event) => eventHasCity(event, city.id))), [cities, itinerary]);
 
   const scrollTo = (id: string) => {
     setMenuOpen(false);
     window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" }), 50);
+  };
+
+  const goToEvents = (matches: ItineraryEvent[]) => {
+    if (matches.length === 0) return;
+    const ids = new Set(matches.map((event) => event.id));
+    const containing = (Object.keys(groups) as TimelineGroup[]).filter((group) => groups[group].some((event) => ids.has(event.id)));
+    setOpen({
+      earlier: containing.includes("earlier"),
+      now: containing.includes("now"),
+      next: containing.includes("next"),
+      later: containing.includes("later"),
+    });
+
+    const earlierDepth = groups.earlier.reduce((depth, event, index) => ids.has(event.id) ? Math.max(depth, index + 1) : depth, 0);
+    const laterDepth = groups.later.reduce((depth, event, index) => ids.has(event.id) ? Math.max(depth, index + 1) : depth, 0);
+    setVisible({
+      earlier: earlierDepth || 1,
+      later: laterDepth || 1,
+    });
+
+    const target = [...matches].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())[0];
+    setMenuOpen(false);
+    window.setTimeout(() => {
+      document.getElementById(`event-${target.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightedIds(matches.map((event) => event.id));
+      window.setTimeout(() => setHighlightedIds([]), 1800);
+    }, 80);
   };
 
   if (loading) return <div className="auth-loading">Loading itinerary…</div>;
@@ -123,13 +176,22 @@ function App() {
       {(Object.keys(sectionLabels) as TimelineGroup[]).map((group) => {
         const all = groups[group];
         const limited = group === "earlier" || group === "later";
-        const shown = limited ? all.slice(0, visible[group]) : all;
+        const shown = limited
+          ? group === "earlier"
+            ? all.slice(0, visible.earlier).reverse()
+            : all.slice(0, visible.later)
+          : all;
         return (
           <section className={`timeline-section ${group}`} id={`section-${group}`} key={group}>
             <button
               className="section-toggle"
               aria-expanded={open[group]}
-              onClick={() => setOpen((state) => ({ ...state, [group]: !state[group] }))}
+              onClick={() => {
+                if (open[group] && (group === "earlier" || group === "later")) {
+                  setVisible((state) => ({ ...state, [group]: 1 }));
+                }
+                setOpen((state) => ({ ...state, [group]: !state[group] }));
+              }}
             >
               <span aria-hidden="true">{open[group] ? "−" : "+"}</span>
               {sectionLabels[group]}
@@ -137,14 +199,17 @@ function App() {
             </button>
             {open[group] && (
               <div className="section-content">
-                {shown.map((event) => <EventCard event={event} cities={cities} onEdit={() => setEditingEvent(event)} key={event.id} />)}
+                {group === "earlier" && visible.earlier < all.length && (
+                  <button className="show-more" onClick={() => setVisible((state) => ({ ...state, earlier: state.earlier + 1 }))}>Show one earlier</button>
+                )}
+                {shown.map((event) => <EventCard event={event} cities={cities} onEdit={() => setEditingEvent(event)} highlighted={highlightedIds.includes(event.id)} key={event.id} />)}
                 {group === "now" && all.length === 0 && (
                   <div className="empty-now">
                     <strong>{place?.name ?? "Before the trip"}</strong>
                     <span>No scheduled event</span>
                   </div>
                 )}
-                {limited && visible[group] < all.length && (
+                {group === "later" && visible.later < all.length && (
                   <button className="show-more" onClick={() => setVisible((state) => ({ ...state, [group]: state[group] + 1 }))}>Show one more</button>
                 )}
               </div>
@@ -162,26 +227,35 @@ function App() {
           <div className="sheet" role="dialog" aria-modal="true" aria-label="Go to" onMouseDown={(event) => event.stopPropagation()}>
             <div className="sheet-handle" />
             <div className="sheet-title"><h2>Go to</h2><button onClick={() => setMenuOpen(false)} aria-label="Close navigation">×</button></div>
-            <button className="nav-now" onClick={() => scrollTo("section-now")}><span />Now</button>
+            <button className="nav-now" onClick={() => {
+              if (groups.now.length) goToEvents(groups.now);
+              else {
+                setOpen({ earlier: false, now: true, next: false, later: false });
+                setVisible({ earlier: 1, later: 1 });
+                scrollTo("section-now");
+              }
+            }}><span />Now</button>
             <h3>Date</h3>
             {dates.map((date) => {
-              const first = itinerary.find((event) => event.startsAt.startsWith(date));
-              return <button key={date} onClick={() => first && scrollTo(`event-${first.id}`)}>{new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date(`${date}T12:00:00`))}</button>;
+              const matches = itinerary.filter((event) => eventDateKeys(event, cities).includes(date));
+              return <button key={date} onClick={() => goToEvents(matches)}>{new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date(`${date}T12:00:00`))}</button>;
             })}
             <h3>City</h3>
-            {cities.map((city) => {
-              const first = itinerary.find((event) => event.type !== "travel" && event.cityId === city.id);
-              return <button key={city.id} onClick={() => first && scrollTo(`event-${first.id}`)}>{city.name}</button>;
+            {citiesWithEvents.map((city) => {
+              const matches = itinerary.filter((event) => eventHasCity(event, city.id));
+              return <button key={city.id} onClick={() => goToEvents(matches)}>{city.name}</button>;
             })}
             <div className="sheet-account">
               {signedInAs && <p><span>Signed in as</span>{signedInAs}</p>}
+              <button onClick={() => { setMenuOpen(false); setTravellersOpen(true); }}>Travellers</button>
               <button onClick={() => void supabase?.auth.signOut()}>Sign out</button>
             </div>
           </div>
         </div>
       )}
       {addOpen && <AddEventSheet tripId={data.tripId} cities={cities} onClose={() => setAddOpen(false)} onChanged={reload} />}
-      {editingEvent && <AddEventSheet tripId={data.tripId} cities={cities} event={editingEvent} onClose={() => setEditingEvent(undefined)} onChanged={reload} />}
+      {editingEvent && <AddEventSheet tripId={data.tripId} cities={cities} event={editingEvent} tickets={data.tickets.filter((ticket) => ticket.eventId === editingEvent.id)} members={data.members} onClose={() => setEditingEvent(undefined)} onChanged={reload} />}
+      {travellersOpen && <TravellersSheet data={data} onClose={() => setTravellersOpen(false)} onChanged={reload} />}
     </main>
   );
 }

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { loadTripData, type TripData } from "./tripData";
 
+function errorMessage(caught: unknown) {
+  if (caught instanceof Error) return caught.message;
+  if (caught && typeof caught === "object" && "message" in caught && typeof caught.message === "string") return caught.message;
+  return "The trip could not be loaded.";
+}
+
 export function useTripData() {
   const [data, setData] = useState<TripData>();
   const [error, setError] = useState<string>();
@@ -12,7 +18,7 @@ export function useTripData() {
     try {
       setData(await loadTripData());
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The trip could not be loaded.");
+      setError(errorMessage(caught));
     } finally {
       setLoading(false);
     }
@@ -23,7 +29,7 @@ export function useTripData() {
     void loadTripData()
       .then((result) => { if (active) setData(result); })
       .catch((caught: unknown) => {
-        if (active) setError(caught instanceof Error ? caught.message : "The trip could not be loaded.");
+        if (active) setError(errorMessage(caught));
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };

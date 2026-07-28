@@ -3,11 +3,15 @@ import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { countryByCode, countryOptions, type SupportedCountryCode } from "./countryOptions";
 import { createCity, createEvent, deleteEvent, updateEvent, type NewEvent } from "./tripData";
 import type { City, EventType, ItineraryEvent, TransportMode } from "./types";
+import { TicketSection } from "./TicketSection";
+import type { Ticket, TripMember } from "./tripData";
 
 type Props = {
   tripId: string;
   cities: City[];
   event?: ItineraryEvent;
+  tickets?: Ticket[];
+  members?: TripMember[];
   onClose: () => void;
   onChanged: () => Promise<void>;
 };
@@ -30,7 +34,7 @@ function localValue(value: string | undefined, timeZone: string) {
   return value ? formatInTimeZone(value, timeZone, "yyyy-MM-dd'T'HH:mm") : "";
 }
 
-export function AddEventSheet({ tripId, cities, event: existing, onClose, onChanged }: Props) {
+export function AddEventSheet({ tripId, cities, event: existing, tickets = [], members = [], onClose, onChanged }: Props) {
   const existingCity = existing?.type !== "travel" ? cities.find((city) => city.id === existing?.cityId) : undefined;
   const existingOrigin = existing?.type === "travel" ? cities.find((city) => city.id === existing.originCityId) : undefined;
   const existingDestination = existing?.type === "travel" ? cities.find((city) => city.id === existing.destinationCityId) : undefined;
@@ -56,7 +60,7 @@ export function AddEventSheet({ tripId, cities, event: existing, onClose, onChan
     const destination = cities.find((candidate) => candidate.id === destinationCityId);
     if (type === "travel" && (!origin || !destination)) return setError("Choose departure and arrival cities.");
     if (type !== "travel" && !city) return setError("Choose a city first.");
-    if (type === "travel" && !endsAt) return setError("Travel requires an arrival time.");
+    if (!endsAt) return setError("Every event needs an end time.");
     setSaving(true);
     setError(undefined);
     try {
@@ -78,16 +82,13 @@ export function AddEventSheet({ tripId, cities, event: existing, onClose, onChan
           title,
           cityId,
           startsAt: fromZonedTime(startsAt, city.timeZone).toISOString(),
-          ...(endsAt ? { endsAt: fromZonedTime(endsAt, city.timeZone).toISOString() } : {}),
+          endsAt: fromZonedTime(endsAt, city.timeZone).toISOString(),
           ...(details ? { details } : {}),
         };
       } else return;
 
-      if (new Date(input.endsAt ?? input.startsAt) < new Date(input.startsAt)) {
-        throw new Error("The end time cannot be before the start time.");
-      }
-      if (input.type === "hotel-stay" && !input.endsAt) {
-        throw new Error("A hotel stay needs an expected checkout time.");
+      if (new Date(input.endsAt) <= new Date(input.startsAt)) {
+        throw new Error("The end time must be after the start time.");
       }
       if (input.type === "travel" && input.transport === "taxi" && input.originCityId !== input.destinationCityId) {
         throw new Error("Taxi journeys must start and finish in the same city.");
@@ -166,11 +167,12 @@ export function AddEventSheet({ tripId, cities, event: existing, onClose, onChan
             <button className="text-action" type="button" onClick={() => setMode("city")}>+ Add another city</button>
             <div className="form-pair">
               <label>Starts<input type="datetime-local" required value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label>
-              <label>{type === "travel" ? "Arrives" : "Ends"} {type !== "travel" && <small>optional</small>}<input type="datetime-local" required={type === "travel"} value={endsAt} onChange={(event) => setEndsAt(event.target.value)} /></label>
+              <label>{type === "travel" ? "Arrives" : "Ends"}<input type="datetime-local" required value={endsAt} onChange={(event) => setEndsAt(event.target.value)} /></label>
             </div>
             <label>Notes <small>optional</small><textarea rows={4} value={details} onChange={(event) => setDetails(event.target.value)} /></label>
             {error && <p className="form-error" role="alert">{error}</p>}
             <button className="primary-action" disabled={saving}>{saving ? "Saving…" : existing ? "Save changes" : "Add event"}</button>
+            {existing && <TicketSection tripId={tripId} eventId={existing.id} tickets={tickets} members={members} onChanged={onChanged} />}
             {existing && <button className="danger-action" type="button" disabled={saving} onClick={() => void remove()}>Delete event</button>}
           </form>
         ) : (

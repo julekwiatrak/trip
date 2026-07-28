@@ -17,7 +17,7 @@ type BaseEvent = {
   id: string;
   title: string;
   startsAt: string;
-  endsAt?: string;
+  endsAt: string;
   details?: string;
 };
 
