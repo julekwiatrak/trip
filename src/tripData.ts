@@ -27,6 +27,12 @@ export type CalendarConnection = {
   lastSyncedAt: string | null;
 };
 export type EditableGoogleCalendar = { id: string; name: string; primary: boolean; accessRole: "owner" | "writer" };
+export type CalendarImport = {
+  id: string; googleEventId: string; googleEventType: string; title: string; description: string | null;
+  location: string | null; allDay: boolean; startsAt: string | null; endsAt: string | null;
+  startsOn: string | null; endsOn: string | null; status: "pending" | "ignored";
+  rawEvent: { start?: { dateTime?: string }; end?: { dateTime?: string } };
+};
 
 type MembershipRow = { trip_id: string; role: TripRole };
 type TripRow = { id: string; name: string; starting_city_id: string | null };
@@ -191,6 +197,50 @@ export async function listGoogleCalendars(tripId: string) {
 
 export async function selectGoogleCalendar(tripId: string, calendarId: string) {
   await invokeCalendarSync(tripId, "select-calendar", { calendarId });
+}
+
+export async function syncGoogleCalendar(tripId: string) {
+  return invokeCalendarSync<{ discovered: number; reviewCount: number }>(tripId, "sync");
+}
+
+export async function loadCalendarImports(tripId: string): Promise<CalendarImport[]> {
+  const client = requireClient();
+  const { data, error } = await client.from("calendar_imports")
+    .select("id, google_event_id, google_event_type, title, description, location, all_day, starts_at, ends_at, starts_on, ends_on, status, raw_event")
+    .eq("trip_id", tripId).in("status", ["pending", "ignored"]).order("starts_at", { nullsFirst: false }).order("starts_on", { nullsFirst: false });
+  if (error) throw error;
+  return data.map((row) => ({
+    id: row.id, googleEventId: row.google_event_id, googleEventType: row.google_event_type,
+    title: row.title, description: row.description, location: row.location, allDay: row.all_day,
+    startsAt: row.starts_at, endsAt: row.ends_at, startsOn: row.starts_on, endsOn: row.ends_on,
+    status: row.status, rawEvent: row.raw_event,
+  })) as CalendarImport[];
+}
+
+export async function deferCalendarImport(importId: string) {
+  const client = requireClient();
+  const { error } = await client.from("calendar_imports").update({ status: "ignored" }).eq("id", importId);
+  if (error) throw error;
+}
+
+export async function importCalendarEvent(tripId: string, calendarId: string, calendarImport: CalendarImport, event: NewEvent) {
+  const client = requireClient();
+  const eventId = crypto.randomUUID();
+  const shape = event.type === "travel"
+    ? { city_id: null, origin_city_id: event.originCityId, destination_city_id: event.destinationCityId, transport: event.transport }
+    : { city_id: event.cityId, origin_city_id: null, destination_city_id: null, transport: null };
+  const { error: eventError } = await client.from("events").insert({
+    id: eventId, trip_id: tripId, type: event.type, title: event.title, starts_at: event.startsAt, ends_at: event.endsAt,
+    details: event.details || null, external_source: "google-calendar",
+    external_calendar_id: calendarId, external_event_id: calendarImport.googleEventId,
+    ...shape,
+  });
+  if (eventError) throw eventError;
+  const { error: importError } = await client.from("calendar_imports").update({ status: "imported", imported_event_id: eventId }).eq("id", calendarImport.id);
+  if (importError) {
+    await client.from("events").delete().eq("id", eventId);
+    throw importError;
+  }
 }
 
 export async function updateDisplayName(displayName: string) {

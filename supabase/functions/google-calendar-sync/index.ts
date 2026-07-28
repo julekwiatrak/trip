@@ -139,10 +139,88 @@ Deno.serve(async (request) => {
       if (selectError) throw selectError;
       return Response.json({ calendar: selected }, { headers: corsHeaders });
     }
+    if (action === "sync") {
+      const { data: connection, error: connectionError } = await service
+        .from("calendar_connections")
+        .select("calendar_id, next_sync_token")
+        .eq("trip_id", tripId)
+        .single();
+      if (connectionError || !connection?.calendar_id) throw new Error("Choose a trip calendar before syncing.");
+
+      const googleEvents: Record<string, unknown>[] = [];
+      let pageToken: string | undefined;
+      let nextSyncToken: string | undefined;
+      do {
+        const eventsUrl = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(connection.calendar_id)}/events`);
+        eventsUrl.searchParams.set("singleEvents", "true");
+        eventsUrl.searchParams.set("showDeleted", "true");
+        eventsUrl.searchParams.set("maxResults", "2500");
+        if (connection.next_sync_token) eventsUrl.searchParams.set("syncToken", connection.next_sync_token);
+        if (pageToken) eventsUrl.searchParams.set("pageToken", pageToken);
+        const eventsResponse = await fetch(eventsUrl, { headers: { Authorization: `Bearer ${googleAccessToken}` } });
+        if (eventsResponse.status === 410) {
+          await service.from("calendar_connections").update({ next_sync_token: null }).eq("trip_id", tripId);
+          throw new Error("Google reset the sync history. Press Sync again to perform a fresh sync.");
+        }
+        if (!eventsResponse.ok) throw new Error("Google would not provide the trip calendar events.");
+        const page = await eventsResponse.json();
+        googleEvents.push(...(page.items ?? []));
+        pageToken = page.nextPageToken;
+        nextSyncToken = page.nextSyncToken ?? nextSyncToken;
+      } while (pageToken);
+
+      const ids = googleEvents.map((event) => event.id).filter(Boolean) as string[];
+      const { data: existingImports, error: importsError } = ids.length
+        ? await service.from("calendar_imports").select("google_event_id, status").eq("trip_id", tripId).in("google_event_id", ids)
+        : { data: [], error: null };
+      if (importsError) throw importsError;
+      const known = new Map((existingImports ?? []).map((item) => [item.google_event_id, item.status]));
+      let discovered = 0;
+      for (const raw of googleEvents) {
+        const googleEvent = raw as {
+          id: string; status?: string; eventType?: string; summary?: string; description?: string; location?: string;
+          updated?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string };
+        };
+        if (!googleEvent.id || googleEvent.status === "cancelled") continue;
+        const allDay = Boolean(googleEvent.start?.date);
+        const row = {
+          trip_id: tripId,
+          google_event_id: googleEvent.id,
+          google_event_type: googleEvent.eventType ?? "default",
+          title: googleEvent.summary || "Untitled event",
+          description: googleEvent.description ?? null,
+          location: googleEvent.location ?? null,
+          starts_at: allDay ? null : googleEvent.start?.dateTime,
+          ends_at: allDay ? null : googleEvent.end?.dateTime,
+          starts_on: allDay ? googleEvent.start?.date : null,
+          ends_on: allDay ? googleEvent.end?.date : null,
+          all_day: allDay,
+          google_updated_at: googleEvent.updated ?? null,
+          raw_event: raw,
+        };
+        if (!known.has(googleEvent.id)) {
+          const { error: insertError } = await service.from("calendar_imports").insert({ ...row, status: "pending" });
+          if (insertError) throw insertError;
+          discovered += 1;
+        } else {
+          const { error: updateImportError } = await service.from("calendar_imports").update(row)
+            .eq("trip_id", tripId).eq("google_event_id", googleEvent.id).neq("status", "imported");
+          if (updateImportError) throw updateImportError;
+        }
+      }
+      const { count: reviewCount, error: countError } = await service.from("calendar_imports")
+        .select("id", { count: "exact", head: true }).eq("trip_id", tripId).in("status", ["pending", "ignored"]);
+      if (countError) throw countError;
+      const { error: finishError } = await service.from("calendar_connections").update({
+        next_sync_token: nextSyncToken ?? connection.next_sync_token,
+        last_synced_at: new Date().toISOString(),
+      }).eq("trip_id", tripId);
+      if (finishError) throw finishError;
+      return Response.json({ discovered, reviewCount: reviewCount ?? 0 }, { headers: corsHeaders });
+    }
     return Response.json({ error: "Unknown calendar action." }, { status: 400, headers: corsHeaders });
   } catch (error) {
     console.error(error);
     return Response.json({ error: error instanceof Error ? error.message : "Calendar request failed." }, { status: 500, headers: corsHeaders });
   }
 });
-

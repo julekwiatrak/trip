@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { countryByCode, countryOptions, type SupportedCountryCode } from "./countryOptions";
-import { createCity, createEvent, deleteEvent, updateEvent, type NewEvent } from "./tripData";
+import { createCity, createEvent, deleteEvent, importCalendarEvent, updateEvent, type CalendarImport, type NewEvent } from "./tripData";
 import type { City, EventType, ItineraryEvent, TransportMode } from "./types";
 import { TicketSection } from "./TicketSection";
 import type { Ticket, TripMember } from "./tripData";
@@ -15,6 +15,9 @@ type Props = {
   canDelete?: boolean;
   onClose: () => void;
   onChanged: () => Promise<void>;
+  calendarImport?: CalendarImport;
+  onProcessed?: () => Promise<void>;
+  calendarId?: string;
 };
 
 const eventTypes: { value: EventType; label: string }[] = [
@@ -35,20 +38,21 @@ function localValue(value: string | undefined, timeZone: string) {
   return value ? formatInTimeZone(value, timeZone, "yyyy-MM-dd'T'HH:mm") : "";
 }
 
-export function AddEventSheet({ tripId, cities, event: existing, tickets = [], members = [], canDelete = false, onClose, onChanged }: Props) {
+export function AddEventSheet({ tripId, cities, event: existing, tickets = [], members = [], canDelete = false, onClose, onChanged, calendarImport, onProcessed, calendarId = "" }: Props) {
   const existingCity = existing?.type !== "travel" ? cities.find((city) => city.id === existing?.cityId) : undefined;
   const existingOrigin = existing?.type === "travel" ? cities.find((city) => city.id === existing.originCityId) : undefined;
   const existingDestination = existing?.type === "travel" ? cities.find((city) => city.id === existing.destinationCityId) : undefined;
   const [mode, setMode] = useState<"event" | "city">(cities.length ? "event" : "city");
   const [type, setType] = useState<EventType>(existing?.type ?? "other-activity");
-  const [title, setTitle] = useState(existing?.title ?? "");
-  const [cityId, setCityId] = useState(existingCity?.id ?? cities[0]?.id ?? "");
+  const suggestedCity = calendarImport ? cities.find((city) => `${calendarImport.title} ${calendarImport.location ?? ""}`.toLocaleLowerCase().includes(city.name.toLocaleLowerCase())) : undefined;
+  const [title, setTitle] = useState(existing?.title ?? calendarImport?.title ?? "");
+  const [cityId, setCityId] = useState(existingCity?.id ?? suggestedCity?.id ?? cities[0]?.id ?? "");
   const [originCityId, setOriginCityId] = useState(existingOrigin?.id ?? cities[0]?.id ?? "");
   const [destinationCityId, setDestinationCityId] = useState(existingDestination?.id ?? cities[1]?.id ?? cities[0]?.id ?? "");
   const [transport, setTransport] = useState<Exclude<TransportMode, "other">>(existing?.type === "travel" && existing.transport !== "other" ? existing.transport : "train");
-  const [startsAt, setStartsAt] = useState(localValue(existing?.startsAt, existingOrigin?.timeZone ?? existingCity?.timeZone ?? "Europe/London"));
-  const [endsAt, setEndsAt] = useState(localValue(existing?.endsAt, existingDestination?.timeZone ?? existingCity?.timeZone ?? "Europe/London"));
-  const [details, setDetails] = useState(existing?.details ?? "");
+  const [startsAt, setStartsAt] = useState(calendarImport?.allDay ? "" : calendarImport?.rawEvent.start?.dateTime?.slice(0, 16) ?? localValue(existing?.startsAt, existingOrigin?.timeZone ?? existingCity?.timeZone ?? "Europe/London"));
+  const [endsAt, setEndsAt] = useState(calendarImport?.allDay ? "" : calendarImport?.rawEvent.end?.dateTime?.slice(0, 16) ?? localValue(existing?.endsAt, existingDestination?.timeZone ?? existingCity?.timeZone ?? "Europe/London"));
+  const [details, setDetails] = useState(existing?.details ?? calendarImport?.description ?? "");
   const [cityName, setCityName] = useState("");
   const [countryCode, setCountryCode] = useState<SupportedCountryCode>("GB");
   const [error, setError] = useState<string>();
@@ -95,10 +99,12 @@ export function AddEventSheet({ tripId, cities, event: existing, tickets = [], m
         throw new Error("Taxi journeys must start and finish in the same city.");
       }
 
-      if (existing) await updateEvent(existing.id, input);
+      if (calendarImport) await importCalendarEvent(tripId, calendarId, calendarImport, input);
+      else if (existing) await updateEvent(existing.id, input);
       else await createEvent(tripId, input);
       await onChanged();
-      onClose();
+      if (calendarImport && onProcessed) await onProcessed();
+      else onClose();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The event could not be saved.");
     } finally {
@@ -146,12 +152,14 @@ export function AddEventSheet({ tripId, cities, event: existing, tickets = [], m
       <div className="sheet edit-sheet" role="dialog" aria-modal="true" aria-label={mode === "event" ? existing ? "Edit event" : "Add event" : "Add city"} onMouseDown={(event) => event.stopPropagation()}>
         <div className="sheet-handle" />
         <div className="sheet-title">
-          <h2>{mode === "event" ? existing ? "Edit event" : "Add event" : "Add city"}</h2>
+          <h2>{mode === "event" ? calendarImport ? "Review calendar event" : existing ? "Edit event" : "Add event" : "Add city"}</h2>
           <button type="button" onClick={onClose} aria-label="Close">×</button>
         </div>
 
         {mode === "event" ? (
           <form className="edit-form" onSubmit={submitEvent}>
+            {calendarImport && <div className="import-source"><span>{calendarImport.status === "ignored" ? "Not added" : "New event"}</span>{calendarImport.googleEventType === "fromGmail" ? "Managed by Google · from Gmail" : "Google Calendar"}{calendarImport.location && <small>{calendarImport.location}</small>}</div>}
+            {calendarImport?.allDay && <p className="form-help">Google stores this as an all-day event ({calendarImport.startsOn} to {calendarImport.endsOn}). Choose realistic start and end times before importing it.</p>}
             <label>Type<select value={type} onChange={(event) => setType(event.target.value as EventType)}>{eventTypes.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
             <label>Title<input required value={title} onChange={(event) => setTitle(event.target.value)} /></label>
             {type === "travel" ? (

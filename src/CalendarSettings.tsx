@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { listGoogleCalendars, selectGoogleCalendar, type EditableGoogleCalendar, type TripData } from "./tripData";
+import { listGoogleCalendars, selectGoogleCalendar, syncGoogleCalendar, type EditableGoogleCalendar, type TripData } from "./tripData";
 
-export function CalendarSettings({ data, onChanged }: { data: TripData; onChanged: () => Promise<void> }) {
+export function CalendarSettings({ data, onChanged, onReview }: { data: TripData; onChanged: () => Promise<void>; onReview: () => void }) {
   const [calendars, setCalendars] = useState<EditableGoogleCalendar[]>();
   const [selectedId, setSelectedId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [message, setMessage] = useState<string>();
   const connection = data.calendarConnection;
   if (!connection) return null;
 
@@ -38,6 +39,22 @@ export function CalendarSettings({ data, onChanged }: { data: TripData; onChange
     }
   };
 
+  const sync = async () => {
+    setBusy(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const result = await syncGoogleCalendar(data.tripId);
+      await onChanged();
+      setMessage(`${result.discovered} new · ${result.reviewCount} to review`);
+      if (result.reviewCount > 0) onReview();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Calendar sync failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="calendar-picker">
       {connection.calendarName ? <p><span>Trip calendar</span>{connection.calendarName}</p> : <p>No trip calendar selected yet.</p>}
@@ -52,6 +69,9 @@ export function CalendarSettings({ data, onChanged }: { data: TripData; onChange
           <button disabled={busy || !selectedId} onClick={() => void save()}>{busy ? "Saving…" : "Use this calendar"}</button>
         </div>
       )}
+      {connection.calendarId && <button disabled={busy} onClick={() => void sync()}>{busy ? "Syncing…" : "Sync calendar"}</button>}
+      {connection.calendarId && <button disabled={busy} onClick={onReview}>Review calendar events</button>}
+      {message && <p>{message}</p>}
       {error && <p className="calendar-message">{error}</p>}
     </div>
   );

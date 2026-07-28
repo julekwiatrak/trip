@@ -10,6 +10,7 @@ import { TravellersSheet } from "./TravellersSheet";
 import { InstallHelp } from "./InstallHelp";
 import { connectGoogleCalendar } from "./tripData";
 import { CalendarSettings } from "./CalendarSettings";
+import { CalendarReviewSheet } from "./CalendarReviewSheet";
 import "./styles.css";
 
 const sectionLabels: Record<TimelineGroup, string> = {
@@ -101,6 +102,7 @@ function App() {
   const [highlightedIds, setHighlightedIds] = useState<string[]>([]);
   const [calendarMessage, setCalendarMessage] = useState<string | undefined>(initialCalendarMessage);
   const [connectingCalendar, setConnectingCalendar] = useState(false);
+  const [calendarReviewOpen, setCalendarReviewOpen] = useState(false);
   const [open, setOpen] = useState<Record<TimelineGroup, boolean>>({
     earlier: false,
     now: true,
@@ -273,7 +275,7 @@ function App() {
                 {data.calendarConnection ? (
                   <p><span>Google connected</span>{data.calendarConnection.googleAccountEmail}</p>
                 ) : <p>Connect the account that can edit the shared trip calendar.</p>}
-                {data.calendarConnection && <CalendarSettings data={data} onChanged={reload} />}
+                {data.calendarConnection && <CalendarSettings data={data} onChanged={reload} onReview={() => { setMenuOpen(false); setCalendarReviewOpen(true); }} />}
                 {calendarMessage && <p className="calendar-message">{calendarMessage}</p>}
                 <button disabled={connectingCalendar} onClick={() => {
                   setConnectingCalendar(true);
@@ -297,6 +299,7 @@ function App() {
       {addOpen && <AddEventSheet tripId={data.tripId} cities={cities} onClose={() => setAddOpen(false)} onChanged={reload} />}
       {editingEvent && <AddEventSheet tripId={data.tripId} cities={cities} event={editingEvent} tickets={data.tickets.filter((ticket) => ticket.eventId === editingEvent.id)} members={data.members} canDelete={data.role === "admin"} onClose={() => setEditingEvent(undefined)} onChanged={reload} />}
       {travellersOpen && <TravellersSheet data={data} onClose={() => setTravellersOpen(false)} onChanged={reload} />}
+      {calendarReviewOpen && <CalendarReviewSheet data={data} onClose={() => setCalendarReviewOpen(false)} onChanged={reload} />}
     </main>
   );
 }

@@ -86,6 +86,11 @@ footer { margin-top: 30px; text-align: center; }
 .calendar-picker .calendar-choice { display: grid; gap: 8px; }
 .calendar-picker label { color: #858780; font-size: .58rem; letter-spacing: .12em; text-transform: uppercase; }
 .calendar-picker select { width: 100%; border: 0; border-bottom: 1px solid #b9bbb3; border-radius: 0; background: #f7f6f1; padding: 10px 4px; color: #252621; font: inherit; font-size: .78rem; }
+.import-source { border-left: 1px solid #aeb0a8; padding-left: 12px; color: #656760; font-size: .72rem; line-height: 1.5; }
+.import-source span, .import-source small { display: block; color: #858780; font-size: .58rem; letter-spacing: .11em; text-transform: uppercase; }
+.review-controls { position: fixed; z-index: 31; right: max(22px, calc((100vw - 520px) / 2 + 22px)); bottom: 18px; left: max(22px, calc((100vw - 520px) / 2 + 22px)); display: flex; align-items: center; justify-content: space-between; pointer-events: none; }
+.review-controls span { color: #777972; font-size: .62rem; letter-spacing: .1em; }
+.review-controls button, .review-finish { pointer-events: auto; border: 0; border-bottom: 1px solid #7e8079; background: #f8f7f3; padding: 5px 0; color: #555750; font-size: .62rem; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
 .traveller-list { margin-top: 24px; border-top: 1px solid #d8d7d1; }
 .traveller-list p { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin: 0; border-bottom: 1px solid #e2e1dc; padding: 13px 0; font-size: .78rem; }
 .traveller-list small { display: block; margin-top: 3px; color: #858780; font-size: .58rem; letter-spacing: .09em; text-transform: uppercase; }
