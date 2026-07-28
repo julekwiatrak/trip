@@ -56,3 +56,19 @@ upload UI are the next application slices.
 - A member sees tickets marked for everyone or assigned to their account.
 - An admin sees every ticket belonging to the trip.
 - Ticket files are private and governed by the same database-backed rules.
+
+## GitHub Pages and PWA deployment
+
+In the GitHub repository, add these under **Settings → Secrets and variables →
+Actions → Variables**:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+Then open **Settings → Pages** and select **GitHub Actions** as the source. A
+push to `main` runs `.github/workflows/deploy-pages.yml` and publishes the app
+at `https://julekwiatrak.github.io/trip/`.
+
+The production build includes a web app manifest, Android and Apple icons, and
+an auto-updating service worker. The service worker caches the application
+shell; private ticket files are not precached.

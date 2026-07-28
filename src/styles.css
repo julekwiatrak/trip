@@ -129,6 +129,10 @@ footer { margin-top: 30px; text-align: center; }
 .auth-panel button { width: 100%; margin-top: 34px; border: 1px solid #171815; background: #171815; color: #f8f7f3; padding: 13px; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; cursor: pointer; }
 .auth-panel button:disabled { opacity: .55; cursor: wait; }
 .auth-error { color: #a33828 !important; }
+.install-help { margin-top: 30px; border-top: 1px solid #d8d7d1; padding-top: 18px; color: #62645e; }
+.install-help summary { cursor: pointer; font-size: .65rem; letter-spacing: .12em; text-transform: uppercase; }
+.install-help p { margin: 15px 0 0 !important; font-size: .73rem !important; line-height: 1.6 !important; }
+.install-help strong { display: block; color: #343531; font-size: .62rem; font-weight: 400; letter-spacing: .1em; text-transform: uppercase; }
 .auth-loading { display: grid; min-height: 100vh; place-items: center; color: #74766f; font-size: .7rem; letter-spacing: .13em; text-transform: uppercase; }
 
 @media (min-width: 640px) {

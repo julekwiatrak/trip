@@ -221,8 +221,13 @@ export async function updateEvent(eventId: string, event: NewEvent): Promise<voi
   if (error) throw error;
 }
 
-export async function deleteEvent(eventId: string): Promise<void> {
+export async function deleteEvent(eventId: string, tickets: Ticket[]): Promise<void> {
   const client = requireClient();
+  const paths = tickets.map((ticket) => ticket.storagePath);
+  if (paths.length) {
+    const { error: storageError } = await client.storage.from("tickets").remove(paths);
+    if (storageError) throw storageError;
+  }
   const { error } = await client.from("events").delete().eq("id", eventId);
   if (error) throw error;
 }

@@ -254,7 +254,7 @@ function App() {
         </div>
       )}
       {addOpen && <AddEventSheet tripId={data.tripId} cities={cities} onClose={() => setAddOpen(false)} onChanged={reload} />}
-      {editingEvent && <AddEventSheet tripId={data.tripId} cities={cities} event={editingEvent} tickets={data.tickets.filter((ticket) => ticket.eventId === editingEvent.id)} members={data.members} onClose={() => setEditingEvent(undefined)} onChanged={reload} />}
+      {editingEvent && <AddEventSheet tripId={data.tripId} cities={cities} event={editingEvent} tickets={data.tickets.filter((ticket) => ticket.eventId === editingEvent.id)} members={data.members} canDelete={data.role === "admin"} onClose={() => setEditingEvent(undefined)} onChanged={reload} />}
       {travellersOpen && <TravellersSheet data={data} onClose={() => setTravellersOpen(false)} onChanged={reload} />}
     </main>
   );

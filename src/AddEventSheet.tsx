@@ -12,6 +12,7 @@ type Props = {
   event?: ItineraryEvent;
   tickets?: Ticket[];
   members?: TripMember[];
+  canDelete?: boolean;
   onClose: () => void;
   onChanged: () => Promise<void>;
 };
@@ -34,7 +35,7 @@ function localValue(value: string | undefined, timeZone: string) {
   return value ? formatInTimeZone(value, timeZone, "yyyy-MM-dd'T'HH:mm") : "";
 }
 
-export function AddEventSheet({ tripId, cities, event: existing, tickets = [], members = [], onClose, onChanged }: Props) {
+export function AddEventSheet({ tripId, cities, event: existing, tickets = [], members = [], canDelete = false, onClose, onChanged }: Props) {
   const existingCity = existing?.type !== "travel" ? cities.find((city) => city.id === existing?.cityId) : undefined;
   const existingOrigin = existing?.type === "travel" ? cities.find((city) => city.id === existing.originCityId) : undefined;
   const existingDestination = existing?.type === "travel" ? cities.find((city) => city.id === existing.destinationCityId) : undefined;
@@ -110,7 +111,7 @@ export function AddEventSheet({ tripId, cities, event: existing, tickets = [], m
     setSaving(true);
     setError(undefined);
     try {
-      await deleteEvent(existing.id);
+      await deleteEvent(existing.id, tickets);
       await onChanged();
       onClose();
     } catch (caught) {
@@ -173,7 +174,7 @@ export function AddEventSheet({ tripId, cities, event: existing, tickets = [], m
             {error && <p className="form-error" role="alert">{error}</p>}
             <button className="primary-action" disabled={saving}>{saving ? "Saving…" : existing ? "Save changes" : "Add event"}</button>
             {existing && <TicketSection tripId={tripId} eventId={existing.id} tickets={tickets} members={members} onChanged={onChanged} />}
-            {existing && <button className="danger-action" type="button" disabled={saving} onClick={() => void remove()}>Delete event</button>}
+            {existing && canDelete && <button className="danger-action" type="button" disabled={saving} onClick={() => void remove()}>Delete event</button>}
           </form>
         ) : (
           <form className="edit-form" onSubmit={submitCity}>
