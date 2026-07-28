@@ -34,16 +34,28 @@ h1 { margin: 0; font-size: 1.8rem; font-weight: 300; letter-spacing: .18em; text
 .location-rail i { position: relative; display: block; width: 1px; height: 100%; background: #b9bbb4; }
 .location-rail i::before { content: ""; position: absolute; top: 8px; left: -3px; width: 7px; height: 7px; border: 1px solid #555750; border-radius: 50%; background: #f8f7f3; }
 .event-copy { min-width: 0; padding: 0 0 34px 22px; }
+.interactive-event { cursor: pointer; outline: 0; }
+.interactive-event:focus-visible .event-copy { outline: 1px solid #8c8e87; outline-offset: 5px; }
 .event-heading { display: flex; align-items: center; gap: 11px; margin-bottom: 8px; }
 .event-heading svg { flex: 0 0 auto; }
 .event-heading h3 { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: .89rem; font-weight: 400; letter-spacing: .105em; line-height: 1.45; text-transform: uppercase; }
 .event-copy time { overflow-wrap: anywhere; color: #6d6f69; font-size: .7rem; letter-spacing: .04em; }
 .event-copy p { max-width: 470px; margin: 16px 0 0; overflow-wrap: anywhere; font-size: .85rem; font-weight: 300; line-height: 1.7; }
+.journey-times { display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr); align-items: center; max-width: 430px; margin-top: 12px; }
+.journey-times > div { min-width: 0; }
+.journey-times > div:last-child { text-align: right; }
+.journey-times span { display: block; overflow: hidden; font-size: .68rem; letter-spacing: .08em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.journey-times time { display: block; margin-top: 4px; font-size: .62rem; line-height: 1.4; }
+.journey-times i { position: relative; height: 1px; background: #b9bbb4; }
+.journey-times i::after { content: ""; position: absolute; top: -2px; right: 0; width: 5px; height: 5px; border-top: 1px solid #777972; border-right: 1px solid #777972; transform: rotate(45deg); }
 .empty-now { display: grid; grid-template-columns: 94px 1fr; min-height: 90px; color: #696b65; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; }
 .empty-now strong { padding-right: 12px; text-align: right; font-weight: 400; }
 .empty-now span { border-left: 1px solid #b9bbb4; padding-left: 22px; }
 .show-more { margin: 0 0 18px 116px; border: 0; border-bottom: 1px solid #777972; background: transparent; padding: 4px 0; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
 footer { margin-top: 30px; text-align: center; }
+.empty-trip { margin: 28px 0 90px; color: #6b6d66; font-size: .82rem; font-weight: 300; line-height: 1.6; text-align: center; }
+.floating-add { position: fixed; z-index: 4; right: max(20px, calc((100vw - 720px) / 2 + 20px)); bottom: max(22px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 8px; border: 1px solid #181916; border-radius: 999px; background: #181916; color: #f8f7f3; padding: 11px 16px; box-shadow: 0 8px 25px rgba(0, 0, 0, .14); font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
+.floating-add span { font-size: 1rem; font-weight: 300; line-height: 1; }
 
 .sheet-layer { position: fixed; z-index: 10; inset: 0; display: flex; align-items: flex-end; justify-content: center; background: rgba(20, 21, 18, .28); }
 .sheet { width: min(100%, 720px); max-height: 82vh; overflow-y: auto; border-radius: 18px 18px 0 0; background: #fbfaf7; padding: 10px 24px 34px; box-shadow: 0 -12px 45px rgba(0,0,0,.12); }
@@ -58,6 +70,25 @@ footer { margin-top: 30px; text-align: center; }
 .sheet-account p { margin: 0 0 16px; color: #555750; font-size: .75rem; overflow-wrap: anywhere; }
 .sheet-account p span { display: block; margin-bottom: 5px; color: #858780; font-size: .6rem; letter-spacing: .13em; text-transform: uppercase; }
 .sheet-account button { border: 0; border-bottom: 1px solid #777972; background: transparent; padding: 4px 0; font-size: .68rem; letter-spacing: .11em; text-transform: uppercase; cursor: pointer; }
+.edit-sheet { max-height: 92vh; }
+.edit-form { margin-top: 25px; }
+.edit-form label { display: block; margin-top: 18px; color: #666861; font-size: .62rem; letter-spacing: .13em; text-transform: uppercase; }
+.edit-form label small { color: #999a95; font-size: .56rem; }
+.edit-form input, .edit-form select, .edit-form textarea { display: block; width: 100%; margin-top: 7px; border: 0; border-bottom: 1px solid #b9bbb4; border-radius: 0; outline: 0; background: transparent; padding: 10px 0; color: #181916; font: inherit; font-size: .88rem; letter-spacing: normal; text-transform: none; }
+.edit-form textarea { resize: vertical; line-height: 1.55; }
+.edit-form input:focus, .edit-form select:focus, .edit-form textarea:focus { border-color: #181916; }
+.form-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+.edit-form .text-action { width: auto; margin-top: 15px; border: 0; border-bottom: 1px solid #8b8d86; background: transparent; padding: 3px 0; color: #5f615b; font-size: .62rem; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
+.edit-form .primary-action { width: 100%; margin-top: 28px; border: 1px solid #181916; background: #181916; color: #f8f7f3; padding: 13px; font-size: .68rem; letter-spacing: .13em; text-transform: uppercase; cursor: pointer; }
+.edit-form .primary-action:disabled { opacity: .55; cursor: wait; }
+.edit-form .danger-action { display: block; width: auto; margin: 22px auto 4px; border: 0; border-bottom: 1px solid #a34a3d; background: transparent; color: #923c30; padding: 4px 0; font-size: .62rem; letter-spacing: .11em; text-transform: uppercase; cursor: pointer; }
+.edit-form .danger-action:disabled { opacity: .5; cursor: wait; }
+.form-help { color: #777972; font-size: .72rem; font-weight: 300; line-height: 1.5; }
+.form-error { color: #a33828; font-size: .75rem; line-height: 1.5; }
+.state-page { padding-top: 80px; }
+.state-page h1 { margin-bottom: 48px; }
+.state-page > p:not(.eyebrow) { color: #62645e; font-size: .85rem; line-height: 1.6; }
+.state-page button { border: 0; border-bottom: 1px solid #181916; background: transparent; padding: 5px 0; font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
 
 .auth-page { display: grid; place-items: center; padding: 24px; }
 .auth-panel { width: min(100%, 390px); }
@@ -86,6 +117,7 @@ footer { margin-top: 30px; text-align: center; }
   .event-copy { padding-left: 16px; }
   .empty-now { grid-template-columns: 78px minmax(0, 1fr); }
   .show-more { margin-left: 94px; }
+  .form-pair { grid-template-columns: 1fr; gap: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }

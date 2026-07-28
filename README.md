@@ -25,8 +25,9 @@ The app is served at `http://localhost:5173/trip/`.
 
    Never put a secret key, service-role key, or database password in this file.
 
-4. Open **SQL Editor**, paste the complete contents of
-   `supabase/migrations/202607280001_initial_schema.sql`, and run it once.
+4. Open **SQL Editor** and run each file in `supabase/migrations/` once, in
+   filename order. If the initial schema is already installed, run only newer
+   migration files.
 5. Open **Authentication → Users** and create your own email/password user.
 6. Edit `supabase/bootstrap_admin.sql`, replacing `REPLACE_WITH_YOUR_EMAIL`, then
    paste it into the SQL Editor and run it once. This creates the trip and makes
@@ -36,11 +37,17 @@ The app is served at `http://localhost:5173/trip/`.
 The migration creates a private `tickets` bucket with a 10 MB per-file limit.
 Accepted formats are PDF, JPEG, PNG, and Apple Wallet pass files.
 
+The route-city migration seeds London, Warsaw, Frankfurt an der Oder, Berlin,
+Paris, Bordeaux, Hendaye, San Sebastián, Madrid, and Málaga. Members can still
+add an emergency destination by entering its city and choosing its country;
+the timezone is inferred automatically.
+
 ## Current state
 
-Authentication is active once environment variables are present. The signed-in
-timeline still uses relative demo events. Loading real cities/events, member
-management, editing, and ticket upload UI are the next application slice.
+Authentication and real Supabase itinerary loading are active once environment
+variables and migrations are present. Members can add cities and basic located
+events. Travel-event creation, editing, member management, notes, and ticket
+upload UI are the next application slices.
 
 ## Security model
 

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { cities, itinerary } from "./data";
+import { formatInTimeZone } from "date-fns-tz";
+import { AddEventSheet } from "./AddEventSheet";
 import { EventIcon } from "./icons";
-import { cityForEvent, currentCity, groupEvents } from "./timeline";
+import { cityForEvent, currentCity, groupEvents, isInIntercityTransit } from "./timeline";
 import { supabase } from "./supabase";
-import type { ItineraryEvent, TimelineGroup } from "./types";
+import type { City, ItineraryEvent, TimelineGroup } from "./types";
+import { useTripData } from "./useTripData";
 import "./styles.css";
 
 const sectionLabels: Record<TimelineGroup, string> = {
@@ -13,32 +15,38 @@ const sectionLabels: Record<TimelineGroup, string> = {
   later: "Later",
 };
 
-const formatTime = (value: string) =>
-  new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+const formatTime = (value: string, timeZone: string) =>
+  formatInTimeZone(value, timeZone, "EEE, d MMM, HH:mm");
 
-function EventCard({ event }: { event: ItineraryEvent }) {
+function EventCard({ event, cities, onEdit }: { event: ItineraryEvent; cities: City[]; onEdit: () => void }) {
   const city = cityForEvent(event, cities);
-  const end = event.endsAt ? ` — ${formatTime(event.endsAt)}` : "";
-  const location = event.type === "travel" ? "In transit" : city?.name;
+  const origin = event.type === "travel" ? cities.find((item) => item.id === event.originCityId) : undefined;
+  const destination = event.type === "travel" ? cities.find((item) => item.id === event.destinationCityId) : undefined;
+  const startZone = origin?.timeZone ?? city?.timeZone ?? "UTC";
+  const endZone = destination?.timeZone ?? city?.timeZone ?? startZone;
+  const end = event.endsAt ? ` — ${formatTime(event.endsAt, endZone)}` : "";
+  const location = event.type === "travel"
+    ? event.originCityId === event.destinationCityId ? origin?.name : "In transit"
+    : city?.name;
 
   return (
-    <article className="event" id={`event-${event.id}`}>
+    <article className="event interactive-event" id={`event-${event.id}`} role="button" tabIndex={0} onClick={onEdit} onKeyDown={(keyEvent) => { if (keyEvent.key === "Enter" || keyEvent.key === " ") onEdit(); }}>
       <div className="location-rail">
         <span>{location}</span>
         <i aria-hidden="true" />
       </div>
       <div className="event-copy">
         <div className="event-heading">
-          <EventIcon type={event.type} />
+          <EventIcon type={event.type} transport={event.type === "travel" ? event.transport : undefined} />
           <h3>{event.title}</h3>
         </div>
-        <time dateTime={event.startsAt}>{formatTime(event.startsAt)}{end}</time>
+        {event.type === "travel" ? (
+          <div className="journey-times">
+            <div><span>{origin?.name}</span><time dateTime={event.startsAt}>{formatTime(event.startsAt, startZone)}</time></div>
+            <i aria-hidden="true" />
+            <div><span>{destination?.name}</span><time dateTime={event.endsAt}>{formatTime(event.endsAt, endZone)}</time></div>
+          </div>
+        ) : <time dateTime={event.startsAt}>{formatTime(event.startsAt, startZone)}{end}</time>}
         {event.details && <p>{event.details}</p>}
       </div>
     </article>
@@ -46,9 +54,12 @@ function EventCard({ event }: { event: ItineraryEvent }) {
 }
 
 function App() {
+  const { data, error, loading, reload } = useTripData();
   const [now, setNow] = useState(() => new Date());
   const [signedInAs, setSignedInAs] = useState<string>();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<ItineraryEvent>();
   const [open, setOpen] = useState<Record<TimelineGroup, boolean>>({
     earlier: false,
     now: true,
@@ -71,11 +82,14 @@ function App() {
     });
   }, []);
 
-  const groups = useMemo(() => groupEvents(itinerary, now), [now]);
-  const place = currentCity(itinerary, cities, now);
+  const cities = useMemo(() => data?.cities ?? [], [data?.cities]);
+  const itinerary = useMemo(() => data?.events ?? [], [data?.events]);
+  const groups = useMemo(() => groupEvents(itinerary, now), [itinerary, now]);
+  const place = currentCity(itinerary, cities, now, data?.startingCityId);
+  const inTransit = isInIntercityTransit(itinerary, now);
   const dates = useMemo(
     () => [...new Set(itinerary.map((event) => event.startsAt.slice(0, 10)))],
-    [],
+    [itinerary],
   );
 
   const scrollTo = (id: string) => {
@@ -83,17 +97,28 @@ function App() {
     window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" }), 50);
   };
 
+  if (loading) return <div className="auth-loading">Loading itinerary…</div>;
+
+  if (error || !data) return (
+    <main className="state-page">
+      <p className="eyebrow">Trip unavailable</p>
+      <h1>Trip</h1>
+      <p>{error ?? "The trip could not be loaded."}</p>
+      <button onClick={() => void reload()}>Try again</button>
+    </main>
+  );
+
   return (
     <main>
       <header className="topbar">
         <div>
           <p className="eyebrow">Shared itinerary</p>
-          <h1>Trip</h1>
+          <h1>{data.tripName}</h1>
         </div>
         <button className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Open navigation">Go to</button>
       </header>
 
-      <p className="status"><span />{place ? `${place.name} · ` : ""}{new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(now)}</p>
+      <p className="status"><span />{inTransit ? "In transit · " : place ? `${place.name} · ` : ""}{new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(now)}</p>
 
       {(Object.keys(sectionLabels) as TimelineGroup[]).map((group) => {
         const all = groups[group];
@@ -112,7 +137,7 @@ function App() {
             </button>
             {open[group] && (
               <div className="section-content">
-                {shown.map((event) => <EventCard event={event} key={event.id} />)}
+                {shown.map((event) => <EventCard event={event} cities={cities} onEdit={() => setEditingEvent(event)} key={event.id} />)}
                 {group === "now" && all.length === 0 && (
                   <div className="empty-now">
                     <strong>{place?.name ?? "Before the trip"}</strong>
@@ -128,7 +153,9 @@ function App() {
         );
       })}
 
-      <footer>Live itinerary · demo data</footer>
+      {itinerary.length === 0 && <p className="empty-trip">No events yet. Add the first moment of the trip.</p>}
+      <button className="floating-add" onClick={() => setAddOpen(true)} aria-label="Add event"><span>+</span> Add</button>
+      <footer>Live itinerary · {data.role}</footer>
 
       {menuOpen && (
         <div className="sheet-layer" role="presentation" onMouseDown={() => setMenuOpen(false)}>
@@ -153,6 +180,8 @@ function App() {
           </div>
         </div>
       )}
+      {addOpen && <AddEventSheet tripId={data.tripId} cities={cities} onClose={() => setAddOpen(false)} onChanged={reload} />}
+      {editingEvent && <AddEventSheet tripId={data.tripId} cities={cities} event={editingEvent} onClose={() => setEditingEvent(undefined)} onChanged={reload} />}
     </main>
   );
 }

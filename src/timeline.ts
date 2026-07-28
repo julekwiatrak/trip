@@ -36,15 +36,29 @@ export function cityForEvent(event: ItineraryEvent, cities: City[]) {
   return cities.find((city) => city.id === event.cityId);
 }
 
-export function currentCity(events: ItineraryEvent[], cities: City[], now: Date) {
+export function currentCity(
+  events: ItineraryEvent[],
+  cities: City[],
+  now: Date,
+  startingCityId?: string | null,
+) {
   const timestamp = now.getTime();
-  const lastArrival = sortEvents(events)
-    .filter(
-      (event) => event.type === "arrival" && startMs(event) <= timestamp,
-    )
+  const lastCompletedTravel = sortEvents(events)
+    .filter((event) => event.type === "travel" && endMs(event) <= timestamp)
     .at(-1);
 
-  return lastArrival?.type === "arrival"
-    ? cities.find((city) => city.id === lastArrival.cityId)
-    : undefined;
+  const cityId = lastCompletedTravel?.type === "travel"
+    ? lastCompletedTravel.destinationCityId
+    : startingCityId;
+  return cities.find((city) => city.id === cityId);
+}
+
+export function isInIntercityTransit(events: ItineraryEvent[], now: Date) {
+  const timestamp = now.getTime();
+  return events.some(
+    (event) => event.type === "travel"
+      && event.originCityId !== event.destinationCityId
+      && startMs(event) <= timestamp
+      && endMs(event) >= timestamp,
+  );
 }

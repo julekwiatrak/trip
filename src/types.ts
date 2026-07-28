@@ -7,11 +7,11 @@ export type City = {
 
 export type EventType =
   | "travel"
-  | "arrival"
-  | "stay"
+  | "hotel-stay"
   | "food-drink"
-  | "activity"
-  | "note";
+  | "other-activity";
+
+export type TransportMode = "train" | "flight" | "bus" | "taxi" | "other";
 
 type BaseEvent = {
   id: string;
@@ -22,12 +22,7 @@ type BaseEvent = {
 };
 
 export type LocatedEvent = BaseEvent & {
-  type: Exclude<EventType, "travel" | "arrival">;
-  cityId: string;
-};
-
-export type ArrivalEvent = BaseEvent & {
-  type: "arrival";
+  type: Exclude<EventType, "travel">;
   cityId: string;
 };
 
@@ -36,9 +31,9 @@ export type TravelEvent = BaseEvent & {
   endsAt: string;
   originCityId: string;
   destinationCityId: string;
-  transport: "train" | "flight" | "bus" | "car" | "walk";
+  transport: TransportMode;
 };
 
-export type ItineraryEvent = LocatedEvent | ArrivalEvent | TravelEvent;
+export type ItineraryEvent = LocatedEvent | TravelEvent;
 
 export type TimelineGroup = "earlier" | "now" | "next" | "later";
