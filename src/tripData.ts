@@ -36,7 +36,7 @@ export type CalendarImport = {
 
 type MembershipRow = { trip_id: string; role: TripRole };
 type TripRow = { id: string; name: string; starting_city_id: string | null };
-type CityRow = { id: string; name: string; country_code: string; time_zone: string };
+type CityRow = { id: string; name: string; country_code: string; time_zone: string; latitude: number | null; longitude: number | null };
 type EventRow = {
   id: string;
   type: EventType;
@@ -102,7 +102,7 @@ export async function loadTripData(): Promise<TripData> {
     client.from("trips").select("id, name, starting_city_id").eq("id", membership.trip_id).single(),
     client.from("profiles").select("display_name").eq("id", userData.user.id).single(),
     client.from("trip_members").select("user_id, role, profiles(display_name)").eq("trip_id", membership.trip_id),
-    client.from("cities").select("id, name, country_code, time_zone").eq("trip_id", membership.trip_id).order("name"),
+    client.from("cities").select("id, name, country_code, time_zone, latitude, longitude").eq("trip_id", membership.trip_id).order("name"),
     client.from("events").select("id, type, title, starts_at, ends_at, city_id, origin_city_id, destination_city_id, transport, details").eq("trip_id", membership.trip_id).order("starts_at"),
     client.from("tickets").select("id, event_id, file_name, storage_path, audience, assigned_to, events!inner(trip_id)").eq("events.trip_id", membership.trip_id),
     membership.role === "admin"
@@ -136,6 +136,8 @@ export async function loadTripData(): Promise<TripData> {
       name: city.name,
       countryCode: city.country_code,
       timeZone: city.time_zone,
+      latitude: city.latitude,
+      longitude: city.longitude,
     })),
     events: eventRows.map(mapEvent),
     calendarConnection: calendarResult.data
@@ -254,14 +256,30 @@ export async function updateDisplayName(displayName: string) {
 
 export async function createCity(
   tripId: string,
-  city: Omit<City, "id">,
+  city: Omit<City, "id" | "latitude" | "longitude">,
 ): Promise<void> {
   const client = requireClient();
+  let latitude: number | null = null;
+  let longitude: number | null = null;
+  try {
+    const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
+    url.search = new URLSearchParams({ name: city.name, count: "1", language: "en", format: "json", countryCode: city.countryCode.toUpperCase() }).toString();
+    const response = await fetch(url);
+    if (response.ok) {
+      const result = await response.json() as { results?: { latitude: number; longitude: number }[] };
+      latitude = result.results?.[0]?.latitude ?? null;
+      longitude = result.results?.[0]?.longitude ?? null;
+    }
+  } catch {
+    // A city remains usable if weather geocoding is temporarily unavailable.
+  }
   const { error } = await client.from("cities").insert({
     trip_id: tripId,
     name: city.name,
     country_code: city.countryCode.toUpperCase(),
     time_zone: city.timeZone,
+    latitude,
+    longitude,
   });
   if (error) throw error;
 }

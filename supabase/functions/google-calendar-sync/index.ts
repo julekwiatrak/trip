@@ -237,6 +237,11 @@ Deno.serve(async (request) => {
       } while (pageToken);
 
       const ids = googleEvents.map((event) => event.id).filter(Boolean) as string[];
+      const { data: linkedEvents, error: linkedError } = ids.length
+        ? await service.from("events").select("id, external_event_id").eq("trip_id", tripId).in("external_event_id", ids)
+        : { data: [], error: null };
+      if (linkedError) throw linkedError;
+      const linkedGoogleIds = new Set((linkedEvents ?? []).map((event) => event.external_event_id));
       const { data: existingImports, error: importsError } = ids.length
         ? await service.from("calendar_imports").select("google_event_id, status").eq("trip_id", tripId).in("google_event_id", ids)
         : { data: [], error: null };
@@ -247,8 +252,25 @@ Deno.serve(async (request) => {
         const googleEvent = raw as {
           id: string; status?: string; eventType?: string; summary?: string; description?: string; location?: string;
           updated?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string };
+          etag?: string; extendedProperties?: { private?: { tripAppEventId?: string; tripId?: string } };
         };
         if (!googleEvent.id || googleEvent.status === "cancelled") continue;
+        const appEventId = googleEvent.extendedProperties?.private?.tripId === tripId
+          ? googleEvent.extendedProperties.private.tripAppEventId
+          : undefined;
+        if (linkedGoogleIds.has(googleEvent.id) || appEventId) {
+          if (appEventId) {
+            const { error: linkUpdateError } = await service.from("events").update({
+              external_source: "google-calendar",
+              external_calendar_id: connection.calendar_id,
+              external_event_id: googleEvent.id,
+              external_updated_at: googleEvent.updated ?? null,
+              external_etag: googleEvent.etag ?? null,
+            }).eq("id", appEventId).eq("trip_id", tripId);
+            if (linkUpdateError) throw linkUpdateError;
+          }
+          continue;
+        }
         const allDay = Boolean(googleEvent.start?.date);
         const row = {
           trip_id: tripId,

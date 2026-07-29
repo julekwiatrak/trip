@@ -3,6 +3,8 @@ export type City = {
   name: string;
   countryCode: string;
   timeZone: string;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export type EventType =

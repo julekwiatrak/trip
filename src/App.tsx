@@ -11,6 +11,7 @@ import { InstallHelp } from "./InstallHelp";
 import { connectGoogleCalendar } from "./tripData";
 import { CalendarSettings } from "./CalendarSettings";
 import { CalendarReviewSheet } from "./CalendarReviewSheet";
+import { useWeather, WeatherBadge } from "./weather";
 import "./styles.css";
 
 const sectionLabels: Record<TimelineGroup, string> = {
@@ -56,7 +57,7 @@ function eventDateKeys(event: ItineraryEvent, cities: City[]) {
   return keys;
 }
 
-function EventCard({ event, cities, onEdit, highlighted }: { event: ItineraryEvent; cities: City[]; onEdit: () => void; highlighted: boolean }) {
+function EventCard({ event, cities, onEdit, highlighted, weatherAt }: { event: ItineraryEvent; cities: City[]; onEdit: () => void; highlighted: boolean; weatherAt: (cityId: string | undefined, instant: string) => { temperature: number; code: number } | undefined }) {
   const city = cityForEvent(event, cities);
   const origin = event.type === "travel" ? cities.find((item) => item.id === event.originCityId) : undefined;
   const destination = event.type === "travel" ? cities.find((item) => item.id === event.destinationCityId) : undefined;
@@ -70,7 +71,7 @@ function EventCard({ event, cities, onEdit, highlighted }: { event: ItineraryEve
   return (
     <article className={`event interactive-event${highlighted ? " navigation-target" : ""}`} id={`event-${event.id}`} role="button" tabIndex={0} onClick={onEdit} onKeyDown={(keyEvent) => { if (keyEvent.key === "Enter" || keyEvent.key === " ") onEdit(); }}>
       <div className="location-rail">
-        <span>{location}</span>
+        <div className="location-label"><span>{location}</span>{event.type !== "travel" && <WeatherBadge weather={weatherAt(event.cityId, event.startsAt)} />}</div>
         <i aria-hidden="true" />
       </div>
       <div className="event-copy">
@@ -80,9 +81,9 @@ function EventCard({ event, cities, onEdit, highlighted }: { event: ItineraryEve
         </div>
         {event.type === "travel" ? (
           <div className="journey-times">
-            <div><span>{origin?.name}</span><time dateTime={event.startsAt}>{formatTime(event.startsAt, startZone)}</time></div>
+            <div><span className="journey-city">{origin?.name}<WeatherBadge weather={weatherAt(event.originCityId, event.startsAt)} /></span><time dateTime={event.startsAt}>{formatTime(event.startsAt, startZone)}</time></div>
             <i aria-hidden="true" />
-            <div><span>{destination?.name}</span><time dateTime={event.endsAt}>{formatTime(event.endsAt, endZone)}</time></div>
+            <div><span className="journey-city">{destination?.name}<WeatherBadge weather={weatherAt(event.destinationCityId, event.endsAt)} /></span><time dateTime={event.endsAt}>{formatTime(event.endsAt, endZone)}</time></div>
           </div>
         ) : <time dateTime={event.startsAt}>{formatTime(event.startsAt, startZone)}{end}</time>}
         {event.details && <p>{event.details}</p>}
@@ -135,6 +136,7 @@ function App() {
   }, [reload]);
 
   const cities = useMemo(() => data?.cities ?? [], [data?.cities]);
+  const weather = useWeather(cities);
   const itinerary = useMemo(() => data?.events ?? [], [data?.events]);
   const groups = useMemo(() => groupEvents(itinerary, now), [itinerary, now]);
   const place = currentCity(itinerary, cities, now, data?.startingCityId);
@@ -195,7 +197,7 @@ function App() {
         <button className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Open navigation">Go to</button>
       </header>
 
-      <p className="status"><span />{inTransit ? "In transit · " : place ? `${place.name} · ` : ""}{new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(now)}</p>
+      <p className="status"><span />{inTransit ? "In transit · " : place ? `${place.name} · ` : ""}{new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(now)}{!inTransit && <WeatherBadge weather={weather.current(place?.id)} />}</p>
 
       {(Object.keys(sectionLabels) as TimelineGroup[]).map((group) => {
         const all = groups[group];
@@ -226,7 +228,7 @@ function App() {
                 {group === "earlier" && visible.earlier < all.length && (
                   <button className="show-more" onClick={() => setVisible((state) => ({ ...state, earlier: state.earlier + 1 }))}>Show one earlier</button>
                 )}
-                {shown.map((event) => <EventCard event={event} cities={cities} onEdit={() => setEditingEvent(event)} highlighted={highlightedIds.includes(event.id)} key={event.id} />)}
+                {shown.map((event) => <EventCard event={event} cities={cities} onEdit={() => setEditingEvent(event)} highlighted={highlightedIds.includes(event.id)} weatherAt={weather.at} key={event.id} />)}
                 {group === "now" && all.length === 0 && (
                   <div className="empty-now">
                     <strong>{place?.name ?? "Before the trip"}</strong>
@@ -244,7 +246,7 @@ function App() {
 
       {itinerary.length === 0 && <p className="empty-trip">No events yet. Add the first moment of the trip.</p>}
       <button className="floating-add" onClick={() => setAddOpen(true)} aria-label="Add event"><span>+</span> Add</button>
-      <footer>Live itinerary · {data.role}</footer>
+      <footer>Live itinerary · {data.role} · Weather by <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a></footer>
 
       {menuOpen && (
         <div className="sheet-layer" role="presentation" onMouseDown={() => setMenuOpen(false)}>
